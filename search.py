@@ -1,8 +1,8 @@
 """Search helpers."""
 
 from typing import Any, Dict, List, Optional, Tuple
-from fuzzywuzzy import fuzz, process as fuzz_process
 from .const import TYPE_STATION
+from .util import match_one
 
 EXCLUDE_ITEMS = {
     "Play Album",
@@ -75,19 +75,6 @@ class RoonSearch():
             return []
         return data["items"]
 
-    def match_one(self, input, choices, key) -> Tuple[Optional[Dict], int]:
-        """Match a single item from a list of choice dicts."""
-        options = [i.get(key) for i in choices]
-        try:
-            opt, confidence = fuzz_process.extractOne(
-                input, options, scorer=fuzz.ratio
-            )
-            choice = [i for i in choices if i.get(key) == opt][0]
-            return choice, confidence
-        except:
-            self.log.info("No match found")
-            return None, 0
-
     def enrich(self, item: Dict, type: str, path: List[str]) -> Dict:
         """Enrich a Roon item with additional metadata."""
         return item | {"mycroft": {
@@ -99,7 +86,7 @@ class RoonSearch():
         """Search for radio stations."""
         stations = self.list_radio_stations()
         names = [station["title"] for station in stations]
-        data, confidence = self.match_one(phrase, stations, "title")
+        data, confidence = match_one(phrase, stations, "title")
         if data:
             return self.enrich(data, TYPE_STATION, ["My Live Radio", data["title"]]), confidence
         return data, confidence

@@ -9,6 +9,7 @@ from roonapi import RoonApi
 from .discovery import discover, authenticate, InvalidAuth
 from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_STATION
 from .search import RoonSearch
+from .util import match_one
 
 # Return value definition indication nothing was found
 # (confidence None, data None)
@@ -241,7 +242,16 @@ class RoonSkill(CommonPlaySkill):
         else:
             self.speak_dialog("RoonNotConfigured")
 
-    @intent_handler(IntentBuilder("Rune").require("Zone"))
+    @intent_handler(IntentBuilder("GetDefaultZone").optionally("Roon").require("List").require("Default").require("Zone"))
+    def get_default_zone(self, message):
+        zone_id = self.settings.get("default_zone_id")
+        if zone_id:
+            zone = self.roon.zones[zone_id]
+            self.speak_dialog("DefaultZone", zone)
+        else:
+            self.speak_dialog("NoDefaultZone")
+
+    @intent_handler(IntentBuilder("ListZones").optionally("Roon").require("List").require("Zone"))
     def list_zones(self, message):
         """List available zones"""
         if self.roon_not_connected():
@@ -267,7 +277,7 @@ class RoonSkill(CommonPlaySkill):
                 },
             )
 
-    @intent_handler(IntentBuilder("Rune").require("Device"))
+    @intent_handler(IntentBuilder("ListOutputs").optionally("Roon").require("List").require("Device"))
     def list_outputs(self, message):
         """List available devices"""
         if self.roon_not_connected():
@@ -293,11 +303,30 @@ class RoonSkill(CommonPlaySkill):
                 },
             )
 
+    @intent_handler(IntentBuilder("SetDefaultZone").optionally("Roon").require("Set").require("SetZone"))
+    def set_default_zone(self, message):
+        zone_name = message.data.get("SetZone")
+        zone, conf = match_one(zone_name, self.roon.zones.values(), "display_name")
+        self.log.info("zone {} conf {}".format(zone, conf))
+        self.settings["default_zone_id"] = zone["zone_id"]
+        self.speak_dialog("DefaultZoneConfirm", zone)
+        self.gui.show_text(zone["display_name"], title="Default Zone")
+        self.release_gui_after()
+
     def roon_not_connected(self):
         if not self.roon:
             self.speak_dialog("RoonNotConfigured")
             return True
         return False
+
+    def release_gui_after(self, seconds=10):
+        self.schedule_event(
+            self.release_gui, seconds
+        )
+
+    def release_gui(self):
+        self.gui.release()
+
 
 
 def create_skill():
