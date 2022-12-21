@@ -1,0 +1,30 @@
+{
+    "skillMetadata": {
+        "sections": [
+            {
+                "name": "Roon Account",
+                "fields": [
+                    {
+                        "type": "label",
+                        "value": "",
+                        "label": "This skill will try to automatically detect your Roon Core, you will need to approve the extension in your Roon Core settings. Ask mycroft 'What is the status of Rooon?' to see if it is connected. Your Roon Core must be running and accessible on the same network as your Mycroft device."
+                    },
+                    {
+                        "name": "host",
+                        "type": "text",
+                        "label": "Host/IP Address",
+                        "value": "",
+                        "placeholder": "Hostname or IP Address of Roon Core"
+                    },
+                    {
+                        "name": "port",
+                        "type": "number",
+                        "label": "Port",
+                        "value": "9330"
+                    }
+                ]
+      }
+    ]
+  }
+}
+
