@@ -1,4 +1,8 @@
+"""Search helpers."""
+
+from typing import Any, Dict, List, Optional, Tuple
 from fuzzywuzzy import fuzz, process as fuzz_process
+from .const import TYPE_STATION
 
 EXCLUDE_ITEMS = {
     "Play Album",
@@ -19,6 +23,7 @@ EXCLUDE_ITEMS = {
 }
 
 def item_payload(roonapi, item, list_image_id):
+    """Return a payload for a search result item."""
     title = item["title"]
     if (subtitle := item.get("subtitle")) is None:
         display_title = title
@@ -43,22 +48,58 @@ def item_payload(roonapi, item, list_image_id):
     }
     return payload
 
-def list_radio_stations(roonapi):
-    opts = {
-        "hierarchy": "internet_radio",
-        "count": 10,
-        "pop_all": True,
-    }
-    if roonapi.browse_browse(opts)["list"]["count"] == 0:
-        return None
-    data = roonapi.browse_load(opts)
-    if not data or "items" not in data:
-        return None
-    return data["items"]
+class RoonSearch():
+    """Utility class for wrapping searching and browsing Roon."""
 
-def search_stations(roonapi, phrase):
-    stations = list_radio_stations(roonapi)
-    names = [station["title"] for station in stations]
-    return fuzz_process.extractOne(
-        phrase, names, scorer=fuzz.ratio
-    )
+    def __init__(self, roonapi, log):
+        """Initialize the RoonSearch class."""
+        self.roonapi = roonapi
+        self.log = log
+
+    def list_radio_stations(self) -> List[Dict]:
+        """List all radio stations."""
+        opts = {
+            "hierarchy": "internet_radio",
+            "count": 10,
+            "pop_all": True,
+        }
+
+        r = self.roonapi.browse_browse(opts)
+        if r is None:
+            return []
+        self.log.info(r)
+        if r["list"]["count"] == 0:
+            return []
+        data = self.roonapi.browse_load(opts)
+        if not data or "items" not in data:
+            return []
+        return data["items"]
+
+    def match_one(self, input, choices, key) -> Tuple[Optional[Dict], int]:
+        """Match a single item from a list of choice dicts."""
+        options = [i.get(key) for i in choices]
+        try:
+            opt, confidence = fuzz_process.extractOne(
+                input, options, scorer=fuzz.ratio
+            )
+            choice = [i for i in choices if i.get(key) == opt][0]
+            return choice, confidence
+        except:
+            self.log.info("No match found")
+            return None, 0
+
+    def enrich(self, item: Dict, type: str, path: List[str]) -> Dict:
+        """Enrich a Roon item with additional metadata."""
+        return item | {"mycroft": {
+            "type": type,
+            "path": path,
+        }}
+
+    def search_stations(self, phrase) -> Tuple[Optional[Dict], int]:
+        """Search for radio stations."""
+        stations = self.list_radio_stations()
+        names = [station["title"] for station in stations]
+        data, confidence = self.match_one(phrase, stations, "title")
+        if data:
+            return self.enrich(data, TYPE_STATION, ["My Live Radio", data["title"]]), confidence
+        return data, confidence

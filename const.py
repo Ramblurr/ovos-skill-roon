@@ -14,3 +14,5 @@ ROON_APPINFO = {
 }
 
 ROON_KEYWORDS = ["roon", "ruin", "rune"]
+
+TYPE_STATION = "station"

@@ -1,1 +1,1 @@
-(the|my) (roon |)(radio|station|radio station) (?P<station>.+)
+(the |my )?(radio |station |radio station )+(?P<station>.+)

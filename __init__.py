@@ -7,8 +7,8 @@ from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
 from roonapi import RoonApi
 
 from .discovery import discover, authenticate, InvalidAuth
-from .const import ROON_APPINFO, ROON_KEYWORDS
-from .search import search_stations
+from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_STATION
+from .search import RoonSearch
 
 # Return value definition indication nothing was found
 # (confidence None, data None)
@@ -94,11 +94,28 @@ class RoonSkill(CommonPlaySkill):
         phrase = re.sub(self.translate_regex("on_roon"), "", phrase, re.IGNORECASE)
         self.log.info("phrase: {}".format(phrase))
         self.log.info("bonus: {}".format(bonus))
-        confidence, data = self.continue_playback(phrase, bonus)
+        data, confidence = self.continue_playback(phrase, bonus)
         if not data:
-            confidence, data = self.specific_query(phrase, bonus)
+            data, confidence = self.specific_query(phrase, bonus)
             if not data:
-                confidence, data = self.generic_query(phrase, bonus)
+                data, confidence = self.generic_query(phrase, bonus)
+        if data:
+            self.log.info("Roon Confidence: {}".format(confidence))
+            self.log.info('              data: {}'.format(data))
+            if roon_specified:
+                level = CPSMatchLevel.EXACT
+            else:
+                if confidence > 0.9:
+                    level = CPSMatchLevel.TITLE
+                elif confidence < 0.5:
+                    level = CPSMatchLevel.GENERIC
+                else:
+                    level = CPSMatchLevel.TITLE
+                phrase += " on roon"
+            self.log.info("Matched {} with level {} to {}".format(phrase, level, data))
+            return phrase, level, data
+        else:
+            self.log.info("Couldn't find anything on Roon")
 
     def continue_playback(self, phrase, bonus):
         if phrase.strip() == 'roon':
@@ -122,6 +139,7 @@ class RoonSkill(CommonPlaySkill):
         """
         match = re.match(self.translate_regex("radio"), phrase,
                          re.IGNORECASE)
+        self.log.info("match: {}".format(match))
         if match:
             return self.query_radio(match.groupdict()["station"])
         return NOTHING_FOUND
@@ -151,19 +169,25 @@ class RoonSkill(CommonPlaySkill):
         return self.regexes[regex]
 
     def query_radio(self, station):
-        """Try to find a radio station
+        """Try to find a radio station.
         Arguments:
           station (str): station to search for
         Returns: Tuple with confidence and data or NOTHING_FOUND
         """
-        probs = search_stations(self.roon, station)
+        search = RoonSearch(self.roon, self.log)
+        probs = search.search_stations(station)
         self.log.info("probs: {}".format(probs))
-        return NOTHING_FOUND
+        return probs
 
 
     def CPS_start(self, phrase, data):
         """Handler for common play framework start. Starts playback"""
-        pass
+        self.log.info("CPS_start: {} {}".format(phrase, data))
+        if self.roon_not_connected():
+            raise RoonNotAuthorizedError()
+        type = data["mycroft"]["type"]
+        r = self.roon.play_media("1701ce54c365ade122ff00d96dd7c24944fc", data["mycroft"]["path"])
+        self.log.info("result: {}".format(r))
 
     def playback_prerequisites_ok(self):
         return not self.roon_not_connected()
@@ -278,3 +302,6 @@ class RoonSkill(CommonPlaySkill):
 
 def create_skill():
     return RoonSkill()
+
+class RoonNotAuthorizedError(Exception):
+    pass
