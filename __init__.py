@@ -1,12 +1,14 @@
 import asyncio
-from typing import Optional
+from typing import Optional, Literal
 import re
 import datetime
 from mycroft.skills.core import intent_handler
+from mycroft.util.parse import extract_number
 from adapt.intent import IntentBuilder
 from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
 
 from roonapi import RoonApi
+from roonapi.constants import SERVICE_TRANSPORT
 
 from .discovery import discover, authenticate, InvalidAuth
 from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_STATION, CONF_DEFAULT_ZONE_NAME, CONF_DEFAULT_ZONE_ID, NOTHING_FOUND
@@ -349,7 +351,130 @@ class RoonSkill(CommonPlaySkill):
     def release_gui(self):
         self.gui.release()
 
+    @intent_handler(IntentBuilder("Stop").require("Stop").optionally("Roon"))
+    def handle_stop(self):
+        """Stop playback."""
+        if self.roon_not_connected():
+            return
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.roon.playback_control(default_zone_id, control="stop")
 
+    @intent_handler(IntentBuilder("Pause").require("Pause").optionally("Roon"))
+    def handle_pause(self):
+        """Pause playback."""
+        if self.roon_not_connected():
+            return
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.roon.playback_control(default_zone_id, control="pause")
+
+    @intent_handler(IntentBuilder("Resume").one_of("PlayResume", "Resume").optionally("Roon"))
+    def handle_resume(self):
+        """Resume playback."""
+        if self.roon_not_connected():
+            return
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.roon.playback_control(default_zone_id, control="play")
+
+
+    @intent_handler(IntentBuilder("Next").require("Next").optionally("Roon"))
+    def handle_next(self):
+        """Next playback."""
+        if self.roon_not_connected():
+            return
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.roon.playback_control(default_zone_id, control="next")
+
+    @intent_handler(IntentBuilder("Prev").require("Prev").optionally("Roon"))
+    def handle_prev(self):
+        """Prev playback."""
+        if self.roon_not_connected():
+            return
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.roon.playback_control(default_zone_id, control="previous")
+
+    @intent_handler(IntentBuilder("Mute").require("Mute").optionally("Roon"))
+    def handle_mute(self):
+        """Mute playback."""
+        if self.roon_not_connected():
+            return
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.log.info("default_zone_id {}".format(default_zone_id))
+        for output in self.outputs_for_zones(default_zone_id):
+            r = self.roon.mute(output["output_id"], mute=True)
+            self.log.info(f"muting {output['display_name']} {r} {output['output_id']}")
+
+    @intent_handler(IntentBuilder("Unmute").require("Unmute").optionally("Roon"))
+    def handle_unmute(self):
+        """Unmute playback."""
+        if self.roon_not_connected():
+            return
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.log.info("default_zone_id {}".format(default_zone_id))
+        for output in self.outputs_for_zones(default_zone_id):
+            r = self.roon.mute(output["output_id"], mute=False)
+            self.log.info(f"unmuting {output['display_name']} {r} {output['output_id']}")
+
+    @intent_handler(IntentBuilder("SetVolumePercent").require("Volume")
+                    .optionally("Increase").optionally("Decrease")
+                    .optionally("To").require("Percent").optionally("Roon"))
+    def handle_set_volume_percent(self, message):
+        """Set volume to a percentage."""
+        if self.roon_not_connected():
+            return
+        percent = extract_number(message.data['utterance'].replace('%', ''))
+        percent = int(percent)
+        self._set_volume(percent)
+        self.acknowledge()
+
+    def _set_volume(self, percent):
+        """Set volume to a percentage."""
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.log.info("default_zone_id {}".format(default_zone_id))
+        for output in self.outputs_for_zones(default_zone_id):
+            r = self.roon.change_volume(output["output_id"], percent)
+            self.log.info(f"changing vol={percent} {output['display_name']} {r} {output['output_id']}")
+
+    @intent_handler("ShuffleOn.intent")
+    def handle_shuffle_on(self):
+        """Turn shuffle on."""
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.roon.shuffle(default_zone_id, True)
+
+    @intent_handler("ShuffleOff.intent")
+    def handle_shuffle_off(self):
+        """Turn shuffle off."""
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        self.roon.shuffle(default_zone_id, False)
+
+    @intent_handler("RepeatTrackOn.intent")
+    def handle_repeat_one_on(self):
+        """Turn repeat one on."""
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        r = self._set_repeat(default_zone_id, "loop_one")
+        if self.is_success(r):
+            self.acknowledge()
+
+    @intent_handler("RepeatOff.intent")
+    def handle_repeat_off(self):
+        """Turn repeat off."""
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        r = self._set_repeat(default_zone_id, "disabled")
+        if self.is_success(r):
+            self.acknowledge()
+
+    def _set_repeat(self, zone_or_output_id, loop: Literal["loop", "loop_one", "disabled"]):
+        data = {"zone_or_output_id": zone_or_output_id, "loop": loop}
+        return self.roon._request(SERVICE_TRANSPORT + "/change_settings", data)
+
+
+    def outputs_for_zones(self, zone_id):
+        return self.roon.zones[zone_id]["outputs"]
+
+    def is_success(self, roon_response):
+        r = "Success" in roon_response
+        if r:
+            self.log.info(f"roon error: {r}")
+        return r
 
 def create_skill():
     return RoonSkill()
