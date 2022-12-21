@@ -182,6 +182,17 @@ class RoonSkill(CommonPlaySkill):
             album = match.groupdict()["album"]
             return self.query_album(album, bonus)
 
+        # Check genres
+        match = re.match(self.translate_regex("genre1"), phrase,
+                         re.IGNORECASE)
+        if not match:
+            match = re.match(self.translate_regex("genre2"), phrase,
+                         re.IGNORECASE)
+        self.log.info("genre match: {}".format(match))
+        if match:
+            genre = match.groupdict()["genre"]
+            return self.query_genre(genre, bonus)
+
         return NOTHING_FOUND
 
     def generic_query(self, phrase, bonus):
@@ -217,6 +228,13 @@ class RoonSkill(CommonPlaySkill):
         probs = self.library.search_stations(station)
         self.log.info("probs: {}".format(probs))
         return probs
+
+    def query_genre(self, genre, bonus)-> Tuple[dict, float]:
+        """Try and find an genre."""
+        bonus += 1
+        data, confidence = self.library.search_genres(genre)
+        confidence = min(confidence+bonus, 1.0)
+        return data, confidence
 
     def query_album(self, album, bonus)-> Tuple[dict, float]:
         """Try and find an album."""

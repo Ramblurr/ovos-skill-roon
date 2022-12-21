@@ -19,6 +19,7 @@ TYPE_STATION = "station"
 TYPE_ALBUM = "album"
 TYPE_ARTIST = "artist"
 TYPE_PLAYLIST = "playlist"
+TYPE_GENRE = "genre"
 
 CONF_DEFAULT_ZONE_ID = "default_zone_id"
 CONF_DEFAULT_ZONE_NAME = "default_zone_name"

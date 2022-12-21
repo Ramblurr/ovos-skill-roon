@@ -1,7 +1,7 @@
 """Search helpers."""
 
 from typing import Any, Dict, List, Optional, Tuple, Literal
-from .const import TYPE_STATION, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, NOTHING_FOUND
+from .const import TYPE_STATION, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_GENRE, NOTHING_FOUND
 from .util import match_one
 
 EXCLUDE_ITEMS = {
@@ -112,16 +112,18 @@ class RoonLibrary():
             "path": path,
         }}
 
-    def _navigate_search(self, phrase: str , item_type: Literal[TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST]) -> Tuple[Optional[Dict], int]:
+    def _navigate_search(self, phrase: str , item_type: Literal[TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_GENRE]) -> Tuple[Optional[Dict], int]:
         mapping = {
             TYPE_ALBUM: "Albums",
             TYPE_ARTIST: "Artists",
             TYPE_PLAYLIST: "Playlists",
+            TYPE_GENRE: "Genres",
         }
         mapping_path = {
             TYPE_ALBUM: ["Library", "Albums"],
             TYPE_ARTIST: ["Library", "Artists"],
-            TYPE_PLAYLIST: ["Playlists"]
+            TYPE_PLAYLIST: ["Playlists"],
+            TYPE_GENRE: ["Genres"]
         }
         opts = {
             "hierarchy": "search",
@@ -163,13 +165,20 @@ class RoonLibrary():
         return self.enrich(data, item_type, path), confidence
 
     def search_albums(self, phrase) -> Tuple[Optional[Dict], int]:
+        """Search for an album."""
         return self._navigate_search(phrase, TYPE_ALBUM)
 
     def search_artists(self, phrase) -> Tuple[Optional[Dict], int]:
+        """Search for an artist."""
         return self._navigate_search(phrase, TYPE_ARTIST)
 
     def search_playlists(self, phrase) -> Tuple[Optional[Dict], int]:
+        """Search playlists."""
         return self._navigate_search(phrase, TYPE_PLAYLIST)
+
+    def search_genres(self, phrase) -> Tuple[Optional[Dict], int]:
+        """Search genres."""
+        return self._navigate_search(phrase, TYPE_GENRE)
 
     def search_stations(self, phrase) -> Tuple[Optional[Dict], int]:
         """Search for radio stations."""
