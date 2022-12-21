@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Literal
+from typing import Optional, Literal, Tuple
 import re
 import datetime
 from mycroft.skills.core import intent_handler
@@ -11,7 +11,7 @@ from roonapi import RoonApi
 from roonapi.constants import SERVICE_TRANSPORT
 
 from .discovery import discover, authenticate, InvalidAuth
-from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_STATION, CONF_DEFAULT_ZONE_NAME, CONF_DEFAULT_ZONE_ID, NOTHING_FOUND
+from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_PLAYLIST, TYPE_ARTIST, TYPE_ALBUM, TYPE_STATION, CONF_DEFAULT_ZONE_NAME, CONF_DEFAULT_ZONE_ID, NOTHING_FOUND
 from .library import RoonLibrary
 from .util import match_one
 
@@ -152,11 +152,36 @@ class RoonSkill(CommonPlaySkill):
             bonus (float): Any existing match bonus
         Returns: Tuple with confidence and data or NOTHING_FOUND
         """
+        # Check radio stations
         match = re.match(self.translate_regex("radio"), phrase,
                          re.IGNORECASE)
-        self.log.info("match: {}".format(match))
+        self.log.info("station match: {}".format(match))
         if match:
             return self.query_radio(match.groupdict()["station"])
+
+        # Check playlist
+        match = re.match(self.translate_regex("playlist"), phrase,
+                         re.IGNORECASE)
+        if match:
+            playlist = match.groupdict()["playlist"]
+            return self.query_playlist(playlist, bonus)
+
+        # Check artist
+        match = re.match(self.translate_regex("artist"), phrase,
+                         re.IGNORECASE)
+        self.log.info("artist match: {}".format(match))
+        if match:
+            artist = match.groupdict()["artist"]
+            return self.query_artist(artist, bonus)
+
+        # Check albums
+        match = re.match(self.translate_regex("album"), phrase,
+                         re.IGNORECASE)
+        self.log.info("album match: {}".format(match))
+        if match:
+            album = match.groupdict()["album"]
+            return self.query_album(album, bonus)
+
         return NOTHING_FOUND
 
     def generic_query(self, phrase, bonus):
@@ -193,6 +218,28 @@ class RoonSkill(CommonPlaySkill):
         self.log.info("probs: {}".format(probs))
         return probs
 
+    def query_album(self, album, bonus)-> Tuple[dict, float]:
+        """Try and find an album."""
+        bonus += 1
+        data, confidence = self.library.search_albums(album)
+        confidence = min(confidence+bonus, 1.0)
+        return data, confidence
+
+    def query_artist(self, artist, bonus)-> Tuple[dict, float]:
+        """Try and find an artist."""
+        bonus += 1
+        data, confidence = self.library.search_artists(artist)
+        confidence = min(confidence+bonus, 1.0)
+        return data, confidence
+
+    def query_playlist(self, playlist, bonus)-> Tuple[dict, float]:
+        """Try and find an playlist."""
+        bonus += 1
+        data, confidence = self.library.search_playlists(playlist)
+        confidence = min(confidence+bonus, 1.0)
+        return data, confidence
+
+
 
     def CPS_start(self, phrase, data):
         """Handler for common play framework start. Starts playback"""
@@ -210,8 +257,14 @@ class RoonSkill(CommonPlaySkill):
             self.acknowledge()
 
         zone_name = {"zone_name": self.settings.get(CONF_DEFAULT_ZONE_NAME)}
-        if data["mycroft"]["type"] == TYPE_STATION:
+        media_type = data["mycroft"]["type"]
+        if media_type == TYPE_STATION:
             self.speak_dialog("ListeningToStation", data|zone_name)
+        elif media_type == TYPE_ALBUM:
+            self.speak_dialog("ListeningToAlbum", data|zone_name)
+        elif media_type == TYPE_ARTIST:
+            self.speak_dialog("ListeningToAlbum", data|zone_name)
+
 
     def playback_prerequisites_ok(self):
         return not self.roon_not_connected()

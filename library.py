@@ -1,10 +1,11 @@
 """Search helpers."""
 
 from typing import Any, Dict, List, Optional, Tuple, Literal
-from .const import TYPE_STATION, NOTHING_FOUND
+from .const import TYPE_STATION, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, NOTHING_FOUND
 from .util import match_one
 
 EXCLUDE_ITEMS = {
+    "No Results",
     "Play Album",
     "Play Artist",
     "Play Playlist",
@@ -110,6 +111,65 @@ class RoonLibrary():
             "type": type,
             "path": path,
         }}
+
+    def _navigate_search(self, phrase: str , item_type: Literal[TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST]) -> Tuple[Optional[Dict], int]:
+        mapping = {
+            TYPE_ALBUM: "Albums",
+            TYPE_ARTIST: "Artists",
+            TYPE_PLAYLIST: "Playlists",
+        }
+        mapping_path = {
+            TYPE_ALBUM: ["Library", "Albums"],
+            TYPE_ARTIST: ["Library", "Artists"],
+            TYPE_PLAYLIST: ["Playlists"]
+        }
+        opts = {
+            "hierarchy": "search",
+            "count": 10,
+            "input": phrase,
+            "pop_all": True,
+            "multi_session_key": "search"
+        }
+        self.log.info(f"searching {item_type} for {phrase}")
+        r = self.roon.browse_browse(opts)
+        if not r:
+            self.log.info("room api returned null search results")
+            return NOTHING_FOUND
+        if r["list"]["count"] == 0:
+            return NOTHING_FOUND
+        items = self.roon.browse_load(opts)["items"]
+        category_key = None
+        for item in items:
+            if item["title"] == mapping[item_type]:
+                category_key = item["item_key"]
+                break
+        if not category_key:
+            return NOTHING_FOUND
+        del opts["pop_all"]
+        del opts["input"]
+        opts["item_key"] = category_key
+        r = self.roon.browse_browse(opts)
+        if r["list"]["count"] == 0:
+            return NOTHING_FOUND
+        r = self.roon.browse_load(opts)
+        if not r:
+            return NOTHING_FOUND
+        items = r["items"]
+        self.log.info(items)
+        data, confidence = match_one(phrase, items, "title")
+        self.log.info(data)
+        path = mapping_path[item_type].copy()
+        path.append(data["title"])
+        return self.enrich(data, item_type, path), confidence
+
+    def search_albums(self, phrase) -> Tuple[Optional[Dict], int]:
+        return self._navigate_search(phrase, TYPE_ALBUM)
+
+    def search_artists(self, phrase) -> Tuple[Optional[Dict], int]:
+        return self._navigate_search(phrase, TYPE_ARTIST)
+
+    def search_playlists(self, phrase) -> Tuple[Optional[Dict], int]:
+        return self._navigate_search(phrase, TYPE_PLAYLIST)
 
     def search_stations(self, phrase) -> Tuple[Optional[Dict], int]:
         """Search for radio stations."""
