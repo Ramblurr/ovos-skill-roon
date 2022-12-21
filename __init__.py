@@ -1,5 +1,7 @@
 import asyncio
+from typing import Optional
 import re
+import datetime
 from mycroft.skills.core import intent_handler
 from adapt.intent import IntentBuilder
 from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
@@ -8,7 +10,7 @@ from roonapi import RoonApi
 
 from .discovery import discover, authenticate, InvalidAuth
 from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_STATION, CONF_DEFAULT_ZONE_NAME, CONF_DEFAULT_ZONE_ID, NOTHING_FOUND
-from .search import RoonSearch
+from .library import RoonLibrary
 from .util import match_one
 
 # Confidence levels for generic play handling
@@ -16,10 +18,11 @@ DIRECT_RESPONSE_CONFIDENCE = 0.8
 
 MATCH_CONFIDENCE = 0.5
 
-
+LIBRARY_CACHE_UPDATE_MIN_INTERVAL_MINUTES = 2
 
 class RoonSkill(CommonPlaySkill):
     """Roon control"""
+    library: Optional[RoonLibrary]
 
     def __init__(self):
         super(RoonSkill, self).__init__()
@@ -28,6 +31,7 @@ class RoonSkill(CommonPlaySkill):
         # So  asyncio.get_event_loop() will not work.
         # Instead we can create a new loop for our Skill's dedicated thread.
         self.roon = None
+        self.library = None
         self.loop = None
         self.regexes = {}
 
@@ -61,6 +65,9 @@ class RoonSkill(CommonPlaySkill):
         auth = self.settings.get("auth")
         if self.roon:
             self.cancel_scheduled_event("RoonLogin")
+            self.schedule_repeating_event(
+                self.update_library_cache, None, 5 * 60, name="RoonLibraryCache"
+            )
 
             # Refresh saved tracks
             # We can't get this list when the user asks because it takes
@@ -76,6 +83,15 @@ class RoonSkill(CommonPlaySkill):
                 auth["port"],
                 blocking_init=True,
             )
+            self.schedule_repeating_event(
+                self.update_library_cache, None, 5 * 60, name="RoonLibraryCache"
+            )
+            self.library = RoonLibrary(self.roon, self.log)
+            self.update_library_cache()
+
+    def update_library_cache(self):
+        if self.library:
+            self.library.update_cache(self.roon)
 
     def CPS_match_query_phrase(self, phrase):
         """Handler for common play framework query. Checks if the skill can play the utterance"""
@@ -171,8 +187,7 @@ class RoonSkill(CommonPlaySkill):
           station (str): station to search for
         Returns: Tuple with confidence and data or NOTHING_FOUND
         """
-        search = RoonSearch(self.roon, self.log)
-        probs = search.search_stations(station)
+        probs = self.library.search_stations(station)
         self.log.info("probs: {}".format(probs))
         return probs
 
