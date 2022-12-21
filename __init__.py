@@ -7,13 +7,9 @@ from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
 from roonapi import RoonApi
 
 from .discovery import discover, authenticate, InvalidAuth
-from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_STATION
+from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_STATION, CONF_DEFAULT_ZONE_NAME, CONF_DEFAULT_ZONE_ID, NOTHING_FOUND
 from .search import RoonSearch
 from .util import match_one
-
-# Return value definition indication nothing was found
-# (confidence None, data None)
-NOTHING_FOUND = (None, 0.0)
 
 # Confidence levels for generic play handling
 DIRECT_RESPONSE_CONFIDENCE = 0.8
@@ -187,8 +183,18 @@ class RoonSkill(CommonPlaySkill):
         if self.roon_not_connected():
             raise RoonNotAuthorizedError()
         type = data["mycroft"]["type"]
-        r = self.roon.play_media("1701ce54c365ade122ff00d96dd7c24944fc", data["mycroft"]["path"])
-        self.log.info("result: {}".format(r))
+        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
+        if not default_zone_id:
+            self.speak_dialog("NoDefaultZone")
+            return
+        r = self.roon.play_media(default_zone_id, data["mycroft"]["path"])
+        self.log.info("zone_id: {} result: {}".format(default_zone_id, r))
+        if r == True:
+            self.acknowledge()
+
+        zone_name = {"zone_name": self.settings.get(CONF_DEFAULT_ZONE_NAME)}
+        if data["mycroft"]["type"] == TYPE_STATION:
+            self.speak_dialog("ListeningToStation", data|zone_name)
 
     def playback_prerequisites_ok(self):
         return not self.roon_not_connected()
@@ -244,7 +250,7 @@ class RoonSkill(CommonPlaySkill):
 
     @intent_handler(IntentBuilder("GetDefaultZone").optionally("Roon").require("List").require("Default").require("Zone"))
     def get_default_zone(self, message):
-        zone_id = self.settings.get("default_zone_id")
+        zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
         if zone_id:
             zone = self.roon.zones[zone_id]
             self.speak_dialog("DefaultZone", zone)
@@ -308,7 +314,8 @@ class RoonSkill(CommonPlaySkill):
         zone_name = message.data.get("SetZone")
         zone, conf = match_one(zone_name, self.roon.zones.values(), "display_name")
         self.log.info("zone {} conf {}".format(zone, conf))
-        self.settings["default_zone_id"] = zone["zone_id"]
+        self.settings[CONF_DEFAULT_ZONE_ID] = zone["zone_id"]
+        self.settings[CONF_DEFAULT_ZONE_NAME] = zone["display_name"]
         self.speak_dialog("DefaultZoneConfirm", zone)
         self.gui.show_text(zone["display_name"], title="Default Zone")
         self.release_gui_after()

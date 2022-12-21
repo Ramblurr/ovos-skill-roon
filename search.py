@@ -1,7 +1,7 @@
 """Search helpers."""
 
 from typing import Any, Dict, List, Optional, Tuple
-from .const import TYPE_STATION
+from .const import TYPE_STATION, NOTHING_FOUND
 from .util import match_one
 
 EXCLUDE_ITEMS = {
@@ -85,6 +85,8 @@ class RoonSearch():
     def search_stations(self, phrase) -> Tuple[Optional[Dict], int]:
         """Search for radio stations."""
         stations = self.list_radio_stations()
+        if len(stations) == 0:
+            return NOTHING_FOUND
         names = [station["title"] for station in stations]
         data, confidence = match_one(phrase, stations, "title")
         if data:

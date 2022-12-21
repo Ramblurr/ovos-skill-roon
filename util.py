@@ -11,5 +11,4 @@ def match_one(input, choices, key) -> Tuple[Optional[Dict], int]:
         choice = [i for i in choices if i.get(key) == opt][0]
         return choice, confidence
     except:
-        self.log.info("No match found")
         return None, 0

@@ -16,3 +16,10 @@ ROON_APPINFO = {
 ROON_KEYWORDS = ["roon", "ruin", "rune"]
 
 TYPE_STATION = "station"
+
+CONF_DEFAULT_ZONE_ID = "default_zone_id"
+CONF_DEFAULT_ZONE_NAME = "default_zone_name"
+
+# Return value definition indication nothing was found
+# (confidence None, data None)
+NOTHING_FOUND = (None, 0.0)
