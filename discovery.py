@@ -27,7 +27,7 @@ class RoonHub:
 
         discovery = RoonDiscovery(None)
         servers = await self.loop.run_in_executor(None, get_discovered_cores, discovery)
-        log.debug("Discovered %s cores", servers)
+        self.log.debug("Discovered %s cores", servers)
         return servers
 
     async def authenticate(self, host, port, servers):
@@ -40,7 +40,7 @@ class RoonHub:
         token = None
         core_id = None
         core_name = None
-        secds = 0
+        secs = 0
 
         if host is None:
             apis = [

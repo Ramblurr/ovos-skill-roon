@@ -12,3 +12,5 @@ ROON_APPINFO = {
     "email": "ramblurr@users.noreply.github.com",
     "website": "https://github.com/ramblurr/mycroft-roon-skill",
 }
+
+ROON_KEYWORDS = ["roon", "ruin", "rune"]
