@@ -67,6 +67,8 @@ class RoonLibrary():
         self.radio_stations = []
         self.genres = []
         self.playlists = []
+        self.zones = {}
+        self.outputs = {}
 
 
     def list_(self, hierarchy: HierarchyTypes) -> List[Dict]:
@@ -117,6 +119,8 @@ class RoonLibrary():
 
         self.log.info("Updating library cache")
 
+        self.zones = self.roon.zones
+        self.outputs = self.roon.outputs
         self.radio_stations = self.list_radio_stations()
         self.genres = self.list_genres()
         self.playlists = self.list_playlists()

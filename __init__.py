@@ -1,7 +1,8 @@
-"""Roon Skill"""
+"""Roon Skill."""
 import asyncio
 from typing import Optional, Literal, Tuple, Dict
 import re
+import os
 import datetime
 from mycroft.skills.core import intent_handler
 from mycroft.util.parse import extract_number
@@ -55,6 +56,9 @@ class RoonSkill(CommonPlaySkill):
         self.add_event("mycroft.audio.service.prev", self.handle_prev)
         self.add_event("mycroft.audio.service.pause", self.handle_pause)
         self.add_event("mycroft.audio.service.resume", self.handle_resume)
+        self.add_event("mycroft.audio.service.stop", self.handle_stop)
+        self.add_event("mycroft.stop", self.handle_stop)
+
         self.settings_change_callback = self.on_websettings_changed
         # Retry in 5 minutes
         self.schedule_repeating_event(
@@ -96,11 +100,32 @@ class RoonSkill(CommonPlaySkill):
             )
             self.library = RoonLibrary(self.roon, self.log)
             self.update_library_cache()
+            self.update_entities()
 
     def update_library_cache(self):
         """Update library cache."""
         if self.library:
             self.library.update_cache(self.roon)
+            self.update_entities()
+
+
+    def _write_entity_file(self, name, data):
+        with open(os.path.join(self.root_dir, "locale", self.lang, f"{name}.entity"), 'w+') as f:
+            f.write("\n".join(data))
+        self.register_entity_file(f"{name}.entity")
+
+    def update_entities(self):
+        """Update locale entity files."""
+        def norm(s):
+            return s.lower().replace("’", "'")
+
+        zone_names = [norm(z["display_name"]) for z in self.library.zones.values()]
+        self._write_entity_file("zone_name", zone_names)
+
+        output_names = [norm(z["display_name"]) for z in self.library.outputs.values()]
+        self._write_entity_file("output_name", output_names)
+        combined = sorted(set(zone_names+output_names))
+        self._write_entity_file("zone_or_output", combined)
 
     def CPS_match_query_phrase(self, phrase):
         """Handle common play framework query.
@@ -315,10 +340,6 @@ class RoonSkill(CommonPlaySkill):
         """Check if the playback prereqs are met."""
         return not self.roon_not_connected()
 
-    def handle_stop(self, message):
-        """Handle stop command."""
-        self.bus.emit(message.reply("mycroft.stop"))
-
     @intent_handler("ConfigureRoon.intent")
     def handle_configure_roon(self, message):
         """Handle configure command."""
@@ -459,13 +480,13 @@ class RoonSkill(CommonPlaySkill):
         """Release the gui now."""
         self.gui.release()
 
-    @intent_handler(IntentBuilder("Stop").require("Stop").optionally("Roon"))
-    def handle_stop(self):
+    @intent_handler("Stop.intent")
+    def handle_stop(self, message):
         """Stop playback."""
         if self.roon_not_connected():
             return
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.roon.playback_control(default_zone_id, control="stop")
+        zone_id = self.get_target_zone_or_output(message)
+        self.roon.playback_control(zone_id, control="stop")
 
     @intent_handler(IntentBuilder("Pause").require("Pause").optionally("Roon"))
     def handle_pause(self):
@@ -522,43 +543,76 @@ class RoonSkill(CommonPlaySkill):
             r = self.roon.mute(output["output_id"], mute=False)
             self.log.info(f"unmuting {output['display_name']} {r} {output['output_id']}")
 
-    @intent_handler(IntentBuilder("SetVolumePercent").require("Volume")
-                    .optionally("Increase").optionally("Decrease")
-                    .optionally("To").require("Percent").optionally("Roon"))
+    @intent_handler(IntentBuilder("VolumeIncrease").require("Roon")
+                    .optionally("Set").optionally("Volume").require("Increase"))
+    def handle_volume_increase(self, message):
+        """Increase the volume a little bit."""
+        if self.roon_not_connected():
+            return
+        self.log.info("INCREASE VOLUME")
+        self._step_volume(5)
+        self.acknowledge()
+
+    @intent_handler(IntentBuilder("VolumeDecrease").require("Roon")
+                    .optionally("Set").optionally("Volume").require("Decrease"))
+    def handle_volume_decrease(self, message):
+        """Decrease the volume a little bit."""
+        if self.roon_not_connected():
+            return
+        self.log.info("DECREASE VOLUME")
+        self._step_volume(-5)
+        self.acknowledge()
+
+
+    @intent_handler("SetVolumePercent.intent")
     def handle_set_volume_percent(self, message):
         """Set volume to a percentage."""
         if self.roon_not_connected():
             return
         percent = extract_number(message.data['utterance'].replace('%', ''))
         percent = int(percent)
-        self._set_volume(percent)
+        zone_id = self.get_target_zone_or_output(message)
+        self._set_volume(zone_id, percent)
         self.acknowledge()
 
-    def _set_volume(self, percent):
-        """Set volume to a percentage."""
+    def _step_volume(self, step):
+        """Change the volume by a relative step."""
         default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.log.info("default_zone_id {}".format(default_zone_id))
+        self.log.info(self.outputs_for_zones(default_zone_id))
         for output in self.outputs_for_zones(default_zone_id):
-            r = self.roon.change_volume(output["output_id"], percent)
+            r = self.roon.change_volume(output["output_id"], step, method="relative_step")
+            self.log.info(f"changing vol={step} {output['display_name']} {r} {output['output_id']}")
+
+    def _set_volume(self, zone_or_output_id, percent):
+        """Set volume to a percentage."""
+        outputs = []
+        if zone_or_output_id in self.library.zones:
+            for output in self.outputs_for_zones(zone_or_output_id):
+                outputs.append(output)
+        elif zone_or_output_id in self.library.outputs:
+            outputs.append(self.library.outputs[zone_or_output_id])
+
+        for output in outputs:
             self.log.info(f"changing vol={percent} {output['display_name']} {r} {output['output_id']}")
+            r = self.roon.change_volume(output["output_id"], percent)
 
     @intent_handler("ShuffleOn.intent")
-    def handle_shuffle_on(self):
+    def handle_shuffle_on(self, message):
         """Turn shuffle on."""
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.roon.shuffle(default_zone_id, True)
+        zone_id = self.get_target_zone_or_output(message)
+        self.roon.shuffle(zone_id, True)
 
     @intent_handler("ShuffleOff.intent")
-    def handle_shuffle_off(self):
+    def handle_shuffle_off(self, message):
         """Turn shuffle off."""
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.roon.shuffle(default_zone_id, False)
+        zone_id = self.get_target_zone_or_output(message)
+        self.roon.shuffle(zone_id, False)
 
     @intent_handler("RepeatTrackOn.intent")
-    def handle_repeat_one_on(self):
+    def handle_repeat_one_on(self, message):
         """Turn repeat one on."""
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        r = self._set_repeat(default_zone_id, "loop_one")
+        zone_id = self.get_target_zone_or_output(message)
+        r = self._set_repeat(zone_id, "loop_one")
         if self.is_success(r):
             self.acknowledge()
 
@@ -575,12 +629,48 @@ class RoonSkill(CommonPlaySkill):
         return self.roon._request(SERVICE_TRANSPORT + "/change_settings", data)
 
 
+    def get_target_zone(self, message):
+        """Get the target zone id from a user's query."""
+        zone_name = message.data.get("zone_or_output")
+        zones = list(self.library.zones.values())
+        self.log.info(zones)
+        zone, confidence = match_one(zone_name, zones, "display_name")
+        if confidence < 0.6:
+            return None
+        if zone:
+            self.log.info(f"extracting target zone from {zone_name}. Found {zone['display_name']}")
+            return zone["zone_id"]
+
+    def get_target_output(self, message):
+        """Get the target output id from a user's query."""
+        output_name = message.data.get("zone_or_output")
+        outputs = list(self.library.outputs.values())
+        self.log.info(outputs)
+        output, confidence = match_one(output_name, outputs, "display_name")
+        if confidence < 0.6:
+            return None
+        if output:
+            self.log.info(f"extracting target output from {output_name}. Found {output['display_name']}")
+            return output["output_id"]
+
+    def get_target_zone_or_output(self, message):
+        """Get the target zone or output id from a user's query."""
+        zone_id = self.get_target_zone(message)
+        if zone_id:
+            return zone_id
+        output_id = self.get_target_output(message)
+        if output_id:
+            return output_id
+
+        return self.settings.get(CONF_DEFAULT_ZONE_ID)
+
     def outputs_for_zones(self, zone_id):
         """Get the outputs for a zone."""
-        return self.roon.zones[zone_id]["outputs"]
+        return self.library.zones[zone_id]["outputs"]
 
     def zone_name(self, zone_id):
-       zone = self.roon.zones.get(zone_id)
+       """Get the zone name."""
+       zone = self.library.zones.get(zone_id)
        if not zone:
            return None
        return zone.get("display_name")

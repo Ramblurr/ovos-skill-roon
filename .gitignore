@@ -1,4 +1,6 @@
 __pycache__/
 *.qmlc
 settings.json
-
+locale/*/output_name.entity
+locale/*/zone_name.entity
+locale/*/zone_or_output.entity

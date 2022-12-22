@@ -1,2 +1,2 @@
-(turn(| off)|switch(| off)|disable|unset) roon (repeat|loop|mode|loop mode)
-set roon (repeat|loop|loop mode) off
+(turn(| off)|switch(| off)|disable|unset) roon (repeat|loop|mode|loop mode)( (on|in|at) {zone_or_output} | )
+set roon (repeat|loop|loop mode) off( (on|in|at) {zone_or_output} | )
