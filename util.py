@@ -47,6 +47,8 @@ def match_one(query, choices, key) -> Tuple[Optional[Dict], int]:
             processor=key_processor(key, "_expanded"),
             limit=999,
         )
+        # for b in best_list:
+        # print(f"{b[0]['title']} {b[1]}")
         chosen, confidence = max(best_list, key=lambda i: i[1])
         if "_expanded" in chosen:
             del chosen["_expanded"]
@@ -54,3 +56,9 @@ def match_one(query, choices, key) -> Tuple[Optional[Dict], int]:
     except Exception as e:
         # raise e
         return None, 0
+
+
+def best_match(opt1, opt2):
+    if opt1[1] > opt2[1]:
+        return opt1
+    return opt2

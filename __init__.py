@@ -230,9 +230,10 @@ class RoonSkill(CommonPlaySkill):
             TYPE_ALBUM,
         ]:
             match = re.match(self.translate_regex(item_type), phrase, re.IGNORECASE)
-            self.log.info(f"{item_type} match: {match}")
             if match:
-                return self.query_type(item_type, match.groupdict()[item_type], bonus)
+                extracted = match.groupdict()[item_type]
+                self.log.info(f"{item_type} extracted: {extracted} match: {match}")
+                return self.query_type(item_type, extracted, bonus)
 
         # Check genres
         match = re.match(self.translate_regex("genre1"), phrase, re.IGNORECASE)

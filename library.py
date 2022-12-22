@@ -1,6 +1,7 @@
 """Search helpers."""
 
 import datetime
+import re
 from typing import Any, Dict, List, Optional, Tuple, Literal
 from .const import (
     SearchableItemTypes,
@@ -18,7 +19,7 @@ from .const import (
     PAGE_SIZE,
     DIRECT_RESPONSE_CONFIDENCE,
 )
-from .util import match_one
+from .util import match_one, best_match
 
 EXCLUDE_ITEMS = {
     "No Results",
@@ -481,7 +482,15 @@ class RoonLibrary:
 
     def search_stations(self, phrase: str) -> Tuple[Optional[Dict], int]:
         """Search for radio stations."""
-        return self.filter_hierarchy_cache(phrase, TYPE_STATION)
+        opt1 = self.filter_hierarchy_cache(phrase, TYPE_STATION)
+        pat = r".*(fm \d+).*"
+        m = re.match(pat, phrase, re.IGNORECASE)
+        if m:
+            no_whitespace = m.group(1).replace(" ", "")
+            phrase = re.sub(pat, no_whitespace, phrase, flags=re.IGNORECASE)
+            opt2 = self.filter_hierarchy_cache(phrase, TYPE_STATION)
+            return best_match(opt1, opt2)
+        return opt1
 
     def match_user_playlist(self, phrase: str) -> Tuple[Optional[Dict], int]:
         """Match a user playlist."""
