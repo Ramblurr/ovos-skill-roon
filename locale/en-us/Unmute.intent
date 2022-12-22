@@ -1,0 +1,3 @@
+unmute (volume|) ( (on|in|at) {zone_or_output} | )
+unmute {zone_or_output}
+(turn off|set|disable|deactivate|) mute (off|) (on|in|at|) {zone_or_output}

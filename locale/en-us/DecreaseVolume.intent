@@ -1,0 +1,4 @@
+(reduce|lower|decrease) volume ( (on|in|at) {zone_or_output} | )
+(reduce|lower|decrease) {zone_or_output} (volume|)
+(set|turn|make) volume ( (on|in|at) {zone_or_output} | ) (down|less|quieter|softer)
+(set|turn|make) {zone_or_output} (volume|) (down|less|quieter|softer)

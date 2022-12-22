@@ -14,6 +14,7 @@ from roonapi.constants import SERVICE_TRANSPORT
 
 from .discovery import discover, authenticate, InvalidAuth
 from .const import (
+    DEFAULT_VOLUME_STEP,
     ROON_APPINFO,
     ROON_KEYWORDS,
     TYPE_TAG,
@@ -516,91 +517,77 @@ class RoonSkill(CommonPlaySkill):
         self.roon.playback_control(zone_id, control="stop")
 
     @intent_handler(IntentBuilder("Pause").require("Pause").optionally("Roon"))
-    def handle_pause(self):
+    def handle_pause(self, message):
         """Pause playback."""
         if self.roon_not_connected():
             return
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.roon.playback_control(default_zone_id, control="pause")
+        zone_id = self.get_target_zone_or_output(message)
+        self.roon.playback_control(zone_id, control="pause")
 
     @intent_handler(
         IntentBuilder("Resume").one_of("PlayResume", "Resume").optionally("Roon")
     )
-    def handle_resume(self):
+    def handle_resume(self, message):
         """Resume playback."""
         if self.roon_not_connected():
             return
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.roon.playback_control(default_zone_id, control="play")
+        zone_id = self.get_target_zone_or_output(message)
+        self.roon.playback_control(zone_id, control="play")
 
     @intent_handler(IntentBuilder("Next").require("Next").optionally("Roon"))
-    def handle_next(self):
+    def handle_next(self, message):
         """Next playback."""
         if self.roon_not_connected():
             return
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.roon.playback_control(default_zone_id, control="next")
+        zone_id = self.get_target_zone_or_output(message)
+        self.roon.playback_control(zone_id, control="next")
 
     @intent_handler(IntentBuilder("Prev").require("Prev").optionally("Roon"))
-    def handle_prev(self):
+    def handle_prev(self, message):
         """Prev playback."""
         if self.roon_not_connected():
             return
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.roon.playback_control(default_zone_id, control="previous")
+        zone_id = self.get_target_zone_or_output(message)
+        self.roon.playback_control(zone_id, control="previous")
 
-    @intent_handler(IntentBuilder("Mute").require("Mute").optionally("Roon"))
-    def handle_mute(self):
+    @intent_handler("Mute.intent")
+    def handle_mute(self, message):
         """Mute playback."""
         if self.roon_not_connected():
             return
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.log.info("default_zone_id {}".format(default_zone_id))
-        for output in self.outputs_for_zones(default_zone_id):
+        zone_id = self.get_target_zone_or_output(message)
+        for output in self.outputs_for_zones(zone_id):
             r = self.roon.mute(output["output_id"], mute=True)
             self.log.info(f"muting {output['display_name']} {r} {output['output_id']}")
 
-    @intent_handler(IntentBuilder("Unmute").require("Unmute").optionally("Roon"))
-    def handle_unmute(self):
+    @intent_handler("Unmute.intent")
+    def handle_unmute(self, message):
         """Unmute playback."""
         if self.roon_not_connected():
             return
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.log.info("default_zone_id {}".format(default_zone_id))
-        for output in self.outputs_for_zones(default_zone_id):
+        zone_id = self.get_target_zone_or_output(message)
+        for output in self.outputs_for_zones(zone_id):
             r = self.roon.mute(output["output_id"], mute=False)
             self.log.info(
                 f"unmuting {output['display_name']} {r} {output['output_id']}"
             )
 
-    @intent_handler(
-        IntentBuilder("VolumeIncrease")
-        .require("Roon")
-        .optionally("Set")
-        .optionally("Volume")
-        .require("Increase")
-    )
+    @intent_handler("IncreaseVolume.intent")
     def handle_volume_increase(self, message):
         """Increase the volume a little bit."""
         if self.roon_not_connected():
             return
-        self.log.info("INCREASE VOLUME")
-        self._step_volume(5)
+        zone_id = self.get_target_zone_or_output(message)
+        self._step_volume(zone_id, DEFAULT_VOLUME_STEP)
         self.acknowledge()
 
-    @intent_handler(
-        IntentBuilder("VolumeDecrease")
-        .require("Roon")
-        .optionally("Set")
-        .optionally("Volume")
-        .require("Decrease")
-    )
+    @intent_handler("DecreaseVolume.intent")
     def handle_volume_decrease(self, message):
         """Decrease the volume a little bit."""
         if self.roon_not_connected():
             return
-        self.log.info("DECREASE VOLUME")
-        self._step_volume(-5)
+        zone_id = self.get_target_zone_or_output(message)
+        self._step_volume(zone_id, -DEFAULT_VOLUME_STEP)
         self.acknowledge()
 
     @intent_handler("SetVolumePercent.intent")
@@ -614,11 +601,16 @@ class RoonSkill(CommonPlaySkill):
         self._set_volume(zone_id, percent)
         self.acknowledge()
 
-    def _step_volume(self, step):
+    def _step_volume(self, zone_or_output_id, step):
         """Change the volume by a relative step."""
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        self.log.info(self.outputs_for_zones(default_zone_id))
-        for output in self.outputs_for_zones(default_zone_id):
+        outputs = []
+        if zone_or_output_id in self.library.zones:
+            for output in self.outputs_for_zones(zone_or_output_id):
+                outputs.append(output)
+        elif zone_or_output_id in self.library.outputs:
+            outputs.append(self.library.outputs[zone_or_output_id])
+
+        for output in outputs:
             r = self.roon.change_volume(
                 output["output_id"], step, method="relative_step"
             )
