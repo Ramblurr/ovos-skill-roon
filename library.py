@@ -1,5 +1,6 @@
 """Search helpers."""
 
+import datetime
 from typing import Any, Dict, List, Optional, Tuple, Literal
 from .const import TYPE_STATION, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_GENRE, NOTHING_FOUND
 from .util import match_one
@@ -25,7 +26,9 @@ EXCLUDE_ITEMS = {
 
 # source https://roonlabs.github.io/node-roon-api/RoonApiBrowse.html
 HierarchyTypes = Literal["browse", "playlists", "settings", "internet_radio", "albums", "artists", "genres", "composers", "search"]
-
+ItemTypes = Literal[TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_GENRE, TYPE_STATION]
+SearchableItemTypes = Literal[TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST]
+FilterableItemTypes = Literal[TYPE_STATION, TYPE_GENRE]
 def item_payload(roonapi, item, list_image_id):
     """Return a payload for a search result item."""
     title = item["title"]
@@ -62,6 +65,7 @@ class RoonLibrary():
         self.log = log
         self.roon = roonapi;
         self.radio_stations = []
+        self.genres = []
 
 
     def list_(self, hierarchy: HierarchyTypes) -> List[Dict]:
@@ -83,6 +87,10 @@ class RoonLibrary():
             return []
         return data["items"]
 
+    def list_genres(self) -> List[Dict]:
+        """List all genres."""
+        return self.list_("genres")
+
     def list_radio_stations(self) -> List[Dict]:
         """List all radio stations."""
         return self.list_("internet_radio")
@@ -96,6 +104,8 @@ class RoonLibrary():
         self.log.info("Updating library cache")
 
         self.radio_stations = self.list_radio_stations()
+        self.genres = self.list_genres()
+        self.last_updated = datetime.datetime.now()
 
     def should_update(self) -> bool:
         """Check if the cache should be updated."""
@@ -112,19 +122,21 @@ class RoonLibrary():
             "path": path,
         }}
 
-    def _navigate_search(self, phrase: str , item_type: Literal[TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_GENRE]) -> Tuple[Optional[Dict], int]:
+    def _navigate_search(self, phrase: str , item_type: SearchableItemTypes) -> Tuple[Optional[Dict], int]:
         mapping = {
             TYPE_ALBUM: "Albums",
             TYPE_ARTIST: "Artists",
             TYPE_PLAYLIST: "Playlists",
-            TYPE_GENRE: "Genres",
         }
         mapping_path = {
             TYPE_ALBUM: ["Library", "Albums"],
             TYPE_ARTIST: ["Library", "Artists"],
-            TYPE_PLAYLIST: ["Playlists"],
-            TYPE_GENRE: ["Genres"]
+            TYPE_PLAYLIST: ["Playlists"]
         }
+
+        if not item_type in mapping:
+            raise Exception(f"Unhandled item type {item_type} for search")
+
         opts = {
             "hierarchy": "search",
             "count": 10,
@@ -164,38 +176,58 @@ class RoonLibrary():
         path.append(data["title"])
         return self.enrich(data, item_type, path), confidence
 
-    def search_albums(self, phrase) -> Tuple[Optional[Dict], int]:
+    def search_albums(self, phrase: str) -> Tuple[Optional[Dict], int]:
         """Search for an album."""
         return self._navigate_search(phrase, TYPE_ALBUM)
 
-    def search_artists(self, phrase) -> Tuple[Optional[Dict], int]:
+    def search_artists(self, phrase: str) -> Tuple[Optional[Dict], int]:
         """Search for an artist."""
         return self._navigate_search(phrase, TYPE_ARTIST)
 
-    def search_playlists(self, phrase) -> Tuple[Optional[Dict], int]:
+    def search_playlists(self, phrase: str) -> Tuple[Optional[Dict], int]:
         """Search playlists."""
         return self._navigate_search(phrase, TYPE_PLAYLIST)
 
-    def search_genres(self, phrase) -> Tuple[Optional[Dict], int]:
-        """Search genres."""
-        return self._navigate_search(phrase, TYPE_GENRE)
+    def match_and_enrich(self, phrase: str, item_type: FilterableItemTypes, path: List[str], items: List[Dict]) -> Tuple[Optional[Dict], int]:
+        """Match and enrich an item."""
+        names = [item["title"] for item in items]
+        data, confidence = match_one(phrase, items, "title")
+        path = path.copy()
+        path.append(data["title"])
+        if data:
+            return self.enrich(data, item_type, path), confidence
+        return data, confidence
 
-    def search_stations(self, phrase) -> Tuple[Optional[Dict], int]:
-        """Search for radio stations."""
+    def filter_hierarchy_cache(self, phrase: str, item_type: ItemTypes) -> Tuple[Optional[Dict], int]:
+        """Filter the cached hierarchy items for a match."""
+        if item_type == TYPE_STATION:
+            items = self.radio_stations
+            path = ["My Live Radio"]
+        elif item_type == TYPE_GENRE:
+            items = self.genres
+            path = ["Genres"]
+        else:
+            raise Exception("Unhandled item type for hierarchy cache filter")
 
-        def match(stations):
-            names = [station["title"] for station in stations]
-            data, confidence = match_one(phrase, stations, "title")
-            if data:
-                return self.enrich(data, TYPE_STATION, ["My Live Radio", data["title"]]), confidence
-            return data, confidence
-        stations = self.radio_stations
-        if len(stations) == 0:
+        if len(items) == 0:
             return NOTHING_FOUND
-        d, c = match(stations)
+        d, c = self.match_and_enrich(phrase, item_type, path, items)
         if  d:
             return d, c
 
-        self.log.info("Not found in station cache, updating")
-        stations = self.list_radio_stations()
-        return match(stations)
+        self.log.info(f"Not found in {item_type} cache, updating")
+        if item_type == TYPE_STATION:
+            items = self.list_radio_stations()
+            path = ["My Live Radio"]
+        elif item_type == TYPE_GENRE:
+            items = self.list_genres()
+            path = ["Genres"]
+        return  self.match_and_enrich(phrase, item_type, path, items)
+
+    def search_genres(self, phrase: str) -> Tuple[Optional[Dict], int]:
+        """Search for genres."""
+        return self.filter_hierarchy_cache(phrase, TYPE_GENRE)
+
+    def search_stations(self, phrase: str) -> Tuple[Optional[Dict], int]:
+        """Search for radio stations."""
+        return self.filter_hierarchy_cache(phrase, TYPE_STATION)
