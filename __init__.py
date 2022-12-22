@@ -534,7 +534,7 @@ class RoonSkill(CommonPlaySkill):
         zone_id = self.get_target_zone_or_output(message)
         self.roon.playback_control(zone_id, control="play")
 
-    @intent_handler(IntentBuilder("Next").require("Next").optionally("Roon"))
+    @intent_handler("Next.intent")
     def handle_next(self, message):
         """Next playback."""
         if self.roon_not_connected():
@@ -542,7 +542,7 @@ class RoonSkill(CommonPlaySkill):
         zone_id = self.get_target_zone_or_output(message)
         self.roon.playback_control(zone_id, control="next")
 
-    @intent_handler(IntentBuilder("Prev").require("Prev").optionally("Roon"))
+    @intent_handler("Prev.intent")
     def handle_prev(self, message):
         """Prev playback."""
         if self.roon_not_connected():
