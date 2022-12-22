@@ -2,7 +2,19 @@
 
 import datetime
 from typing import Any, Dict, List, Optional, Tuple, Literal
-from .const import TYPE_TRACK, TYPE_STATION, TYPE_TAG, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_GENRE, NOTHING_FOUND, LIBRARY_CACHE_UPDATE_MIN_INTERVAL_MINUTES, PAGE_SIZE, DIRECT_RESPONSE_CONFIDENCE
+from .const import (
+    TYPE_TRACK,
+    TYPE_STATION,
+    TYPE_TAG,
+    TYPE_ALBUM,
+    TYPE_ARTIST,
+    TYPE_PLAYLIST,
+    TYPE_GENRE,
+    NOTHING_FOUND,
+    LIBRARY_CACHE_UPDATE_MIN_INTERVAL_MINUTES,
+    PAGE_SIZE,
+    DIRECT_RESPONSE_CONFIDENCE,
+)
 from .util import match_one
 
 EXCLUDE_ITEMS = {
@@ -25,10 +37,32 @@ EXCLUDE_ITEMS = {
 }
 
 # source https://roonlabs.github.io/node-roon-api/RoonApiBrowse.html
-HierarchyTypes = Literal["browse", "playlists", "settings", "internet_radio", "albums", "artists", "genres", "composers", "search"]
-ItemTypes = Literal[TYPE_TRACK, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_GENRE, TYPE_STATION, TYPE_TAG]
-SearchableItemTypes = Literal[TYPE_TRACK, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_TAG]
+HierarchyTypes = Literal[
+    "browse",
+    "playlists",
+    "settings",
+    "internet_radio",
+    "albums",
+    "artists",
+    "genres",
+    "composers",
+    "search",
+]
+ItemTypes = Literal[
+    TYPE_TRACK,
+    TYPE_ALBUM,
+    TYPE_ARTIST,
+    TYPE_PLAYLIST,
+    TYPE_GENRE,
+    TYPE_STATION,
+    TYPE_TAG,
+]
+SearchableItemTypes = Literal[
+    TYPE_TRACK, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_TAG
+]
 FilterableItemTypes = Literal[TYPE_STATION, TYPE_GENRE]
+
+
 def item_payload(roonapi, item, list_image_id):
     """Return a payload for a search result item."""
     title = item["title"]
@@ -56,20 +90,19 @@ def item_payload(roonapi, item, list_image_id):
     return payload
 
 
-class RoonLibrary():
+class RoonLibrary:
     """Wrapper for the Roon API."""
 
     def __init__(self, roonapi, log):
         """init."""
         self.last_updated = None
         self.log = log
-        self.roon = roonapi;
+        self.roon = roonapi
         self.radio_stations = []
         self.genres = []
         self.playlists = []
         self.zones = {}
         self.outputs = {}
-
 
     def list_(self, hierarchy: HierarchyTypes) -> List[Dict]:
         """List all items in a hierarchy."""
@@ -111,7 +144,7 @@ class RoonLibrary():
             results.append(self.enrich(item, TYPE_PLAYLIST, ["Playlists"]))
         return results
 
-    def update_cache(self, roonapi)-> None:
+    def update_cache(self, roonapi) -> None:
         """Update the library cache."""
         self.roon = roonapi
         if not self.should_update():
@@ -136,23 +169,27 @@ class RoonLibrary():
 
     def enrich(self, item: Dict, type: str, path: List[str]) -> Dict:
         """Enrich a Roon item with additional metadata."""
-        return item | {"mycroft": {
-            "type": type,
-            "path": path,
-        }}
+        return item | {
+            "mycroft": {
+                "type": type,
+                "path": path,
+            }
+        }
 
-    def _navigate_search(self, phrase: str , item_type: SearchableItemTypes) -> Tuple[Optional[Dict], int]:
+    def _navigate_search(
+        self, phrase: str, item_type: SearchableItemTypes
+    ) -> Tuple[Optional[Dict], int]:
         mapping = {
             TYPE_ALBUM: "Albums",
             TYPE_ARTIST: "Artists",
             TYPE_PLAYLIST: "Playlists",
-            TYPE_TAG: "Tags"
+            TYPE_TAG: "Tags",
         }
         mapping_path = {
             TYPE_ALBUM: ["Library", "Albums"],
             TYPE_ARTIST: ["Library", "Artists"],
             TYPE_PLAYLIST: ["Playlists"],
-            TYPE_TAG: ["Library", "Tags"]
+            TYPE_TAG: ["Library", "Tags"],
         }
 
         if not item_type in mapping:
@@ -163,7 +200,7 @@ class RoonLibrary():
             "count": 10,
             "input": phrase,
             "pop_all": True,
-            "multi_session_key": "navigate_search"
+            "multi_session_key": "navigate_search",
         }
         self.log.info(f"searching {item_type} for {phrase}")
         r = self.roon.browse_browse(opts)
@@ -193,9 +230,7 @@ class RoonLibrary():
         data, confidence = match_one(phrase, items, "title")
         path = mapping_path[item_type].copy()
         path.append(data["title"])
-        return data |{"mycroft": {
-            "session_key": "navigate_search"
-        }}, confidence
+        return data | {"mycroft": {"session_key": "navigate_search"}}, confidence
 
     def search(self, session_key, phrase: str) -> Tuple[Optional[Dict], int]:
         """Perform a generic search, returning the top result."""
@@ -204,7 +239,7 @@ class RoonLibrary():
             "count": 10,
             "input": phrase,
             "pop_all": True,
-            "multi_session_key": session_key
+            "multi_session_key": session_key,
         }
         self.log.info(f"searching generic for {phrase}")
         r = self.roon.browse_browse(opts)
@@ -221,7 +256,6 @@ class RoonLibrary():
             return NOTHING_FOUND
         data = first_item | {"mycroft": {"session_key": session_key}}
         return data, DIRECT_RESPONSE_CONFIDENCE
-
 
     def play_path(self, zone_or_output_id, path, action=None, report_error=True):
         # pylint: disable=too-many-locals,too-many-branches
@@ -335,14 +369,16 @@ class RoonLibrary():
         self.log.info(f"Play result: {r}")
         return r
 
-    def play_search_result(self, zone_or_output_id, item_key: str, session_key: str) -> Dict[str, Any]:
+    def play_search_result(
+        self, zone_or_output_id, item_key: str, session_key: str
+    ) -> Dict[str, Any]:
         """Play the top result of a previous search."""
         self.log.info(f"playing item from session key {session_key}")
         opts = {
             "hierarchy": "search",
             "count": 10,
             "multi_session_key": session_key,
-            "item_key": item_key
+            "item_key": item_key,
         }
         action_list_key = None
 
@@ -372,10 +408,9 @@ class RoonLibrary():
             # couldn't find the action list, let's go a level deeper
             opts["item_key"] = items[0]["item_key"]
 
-
         if action_list_key is None:
             self.log.info(f"Could not find action list key!")
-            return {"is_error": True, "message": "Nothing found" }
+            return {"is_error": True, "message": "Nothing found"}
 
         opts["item_key"] = action_list_key
         r = self.roon.browse_browse(opts)
@@ -388,7 +423,7 @@ class RoonLibrary():
                 break
         if action_key is None:
             self.log.info(f"Could not find action key!")
-            return {"is_error": True, "message": "Nothing found" }
+            return {"is_error": True, "message": "Nothing found"}
 
         opts["item_key"] = action_key
         opts["zone_or_output_id"] = zone_or_output_id
@@ -416,7 +451,13 @@ class RoonLibrary():
         """Search playlists."""
         return self._navigate_search(phrase, TYPE_PLAYLIST)
 
-    def match_and_enrich(self, phrase: str, item_type: FilterableItemTypes, path: List[str], items: List[Dict]) -> Tuple[Optional[Dict], int]:
+    def match_and_enrich(
+        self,
+        phrase: str,
+        item_type: FilterableItemTypes,
+        path: List[str],
+        items: List[Dict],
+    ) -> Tuple[Optional[Dict], int]:
         """Match and enrich an item."""
         names = [item["title"] for item in items]
         data, confidence = match_one(phrase, items, "title")
@@ -426,7 +467,9 @@ class RoonLibrary():
             return self.enrich(data, item_type, path), confidence
         return data, confidence
 
-    def filter_hierarchy_cache(self, phrase: str, item_type: ItemTypes) -> Tuple[Optional[Dict], int]:
+    def filter_hierarchy_cache(
+        self, phrase: str, item_type: ItemTypes
+    ) -> Tuple[Optional[Dict], int]:
         """Filter the cached hierarchy items for a match."""
         if item_type == TYPE_STATION:
             items = self.radio_stations
@@ -440,7 +483,7 @@ class RoonLibrary():
         if len(items) == 0:
             return NOTHING_FOUND
         d, c = self.match_and_enrich(phrase, item_type, path, items)
-        if  d:
+        if d:
             return d, c
 
         self.log.info(f"Not found in {item_type} cache, updating")
@@ -450,7 +493,7 @@ class RoonLibrary():
         elif item_type == TYPE_GENRE:
             items = self.list_genres()
             path = ["Genres"]
-        return  self.match_and_enrich(phrase, item_type, path, items)
+        return self.match_and_enrich(phrase, item_type, path, items)
 
     def search_genres(self, phrase: str) -> Tuple[Optional[Dict], int]:
         """Search for genres."""
@@ -462,7 +505,6 @@ class RoonLibrary():
 
     def match_user_playlist(self, phrase: str) -> Tuple[Optional[Dict], int]:
         """Match a user playlist."""
-        return self.match_and_enrich(phrase, TYPE_PLAYLIST, ["Playlists"], self.playlists)
-
-        #import pprint
-        #self.log.info(pprint.pformat(self.playlists, indent=4))
+        return self.match_and_enrich(
+            phrase, TYPE_PLAYLIST, ["Playlists"], self.playlists
+        )

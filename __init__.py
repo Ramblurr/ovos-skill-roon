@@ -13,14 +13,29 @@ from roonapi import RoonApi
 from roonapi.constants import SERVICE_TRANSPORT
 
 from .discovery import discover, authenticate, InvalidAuth
-from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_TAG, TYPE_PLAYLIST, TYPE_ARTIST, TYPE_ALBUM, TYPE_STATION, CONF_DEFAULT_ZONE_NAME, CONF_DEFAULT_ZONE_ID, NOTHING_FOUND, DIRECT_RESPONSE_CONFIDENCE, MATCH_CONFIDENCE
+from .const import (
+    ROON_APPINFO,
+    ROON_KEYWORDS,
+    TYPE_TAG,
+    TYPE_PLAYLIST,
+    TYPE_ARTIST,
+    TYPE_ALBUM,
+    TYPE_STATION,
+    CONF_DEFAULT_ZONE_NAME,
+    CONF_DEFAULT_ZONE_ID,
+    NOTHING_FOUND,
+    DIRECT_RESPONSE_CONFIDENCE,
+    MATCH_CONFIDENCE,
+)
 from .library import RoonLibrary
 from .util import match_one
+
 
 class RoonNotAuthorizedError(Exception):
     """Error for when Roon isn't authorized."""
 
     pass
+
 
 class RoonSkill(CommonPlaySkill):
     """Control roon with your voice."""
@@ -108,14 +123,16 @@ class RoonSkill(CommonPlaySkill):
             self.library.update_cache(self.roon)
             self.update_entities()
 
-
     def _write_entity_file(self, name, data):
-        with open(os.path.join(self.root_dir, "locale", self.lang, f"{name}.entity"), 'w+') as f:
+        with open(
+            os.path.join(self.root_dir, "locale", self.lang, f"{name}.entity"), "w+"
+        ) as f:
             f.write("\n".join(data))
         self.register_entity_file(f"{name}.entity")
 
     def update_entities(self):
         """Update locale entity files."""
+
         def norm(s):
             return s.lower().replace("’", "'")
 
@@ -124,7 +141,7 @@ class RoonSkill(CommonPlaySkill):
 
         output_names = [norm(z["display_name"]) for z in self.library.outputs.values()]
         self._write_entity_file("output_name", output_names)
-        combined = sorted(set(zone_names+output_names))
+        combined = sorted(set(zone_names + output_names))
         self._write_entity_file("zone_or_output", combined)
 
     def CPS_match_query_phrase(self, phrase):
@@ -149,7 +166,7 @@ class RoonSkill(CommonPlaySkill):
             data, confidence = self.generic_query(phrase, bonus)
         if data:
             self.log.info("Roon Confidence: {}".format(confidence))
-            self.log.info('              data: {}'.format(data))
+            self.log.info("              data: {}".format(data))
             if roon_specified:
                 level = CPSMatchLevel.EXACT
             else:
@@ -178,49 +195,42 @@ class RoonSkill(CommonPlaySkill):
         Returns: Tuple with confidence and data or NOTHING_FOUND
         """
         # Check radio stations
-        match = re.match(self.translate_regex("radio"), phrase,
-                         re.IGNORECASE)
+        match = re.match(self.translate_regex("radio"), phrase, re.IGNORECASE)
         self.log.info("station match: {}".format(match))
         if match:
             return self.query_radio(match.groupdict()["station"])
 
         # Check playlist
-        match = re.match(self.translate_regex("playlist"), phrase,
-                         re.IGNORECASE)
+        match = re.match(self.translate_regex("playlist"), phrase, re.IGNORECASE)
         if match:
             playlist = match.groupdict()["playlist"]
             return self.query_playlist(playlist, bonus)
 
         # Check tags
-        match = re.match(self.translate_regex("tag"), phrase,
-                         re.IGNORECASE)
+        match = re.match(self.translate_regex("tag"), phrase, re.IGNORECASE)
         self.log.info("tag match: {}".format(match))
         if match:
             tag = match.groupdict()["tag"]
             return self.query_tag(tag, bonus)
 
         # Check artist
-        match = re.match(self.translate_regex("artist"), phrase,
-                         re.IGNORECASE)
+        match = re.match(self.translate_regex("artist"), phrase, re.IGNORECASE)
         self.log.info("artist match: {}".format(match))
         if match:
             artist = match.groupdict()["artist"]
             return self.query_artist(artist, bonus)
 
         # Check albums
-        match = re.match(self.translate_regex("album"), phrase,
-                         re.IGNORECASE)
+        match = re.match(self.translate_regex("album"), phrase, re.IGNORECASE)
         self.log.info("album match: {}".format(match))
         if match:
             album = match.groupdict()["album"]
             return self.query_album(album, bonus)
 
         # Check genres
-        match = re.match(self.translate_regex("genre1"), phrase,
-                         re.IGNORECASE)
+        match = re.match(self.translate_regex("genre1"), phrase, re.IGNORECASE)
         if not match:
-            match = re.match(self.translate_regex("genre2"), phrase,
-                         re.IGNORECASE)
+            match = re.match(self.translate_regex("genre2"), phrase, re.IGNORECASE)
         self.log.info("genre match: {}".format(match))
         if match:
             genre = match.groupdict()["genre"]
@@ -239,12 +249,12 @@ class RoonSkill(CommonPlaySkill):
         self.log.info('Handling "{}" as a generic query...'.format(phrase))
 
         d, c = self.library.search("generic_search", phrase)
-        return d, bonus+c
+        return d, bonus + c
 
     def translate_regex(self, regex):
         """Translate the given regex."""
         if regex not in self.regexes:
-            path = self.find_resource(regex + '.regex')
+            path = self.find_resource(regex + ".regex")
             if path:
                 with open(path) as f:
                     string = f.read().strip()
@@ -262,39 +272,39 @@ class RoonSkill(CommonPlaySkill):
         self.log.info("probs: {}".format(probs))
         return probs
 
-    def query_genre(self, genre, bonus)-> Tuple[dict, float]:
+    def query_genre(self, genre, bonus) -> Tuple[dict, float]:
         """Try and find an genre."""
         bonus += 1
         data, confidence = self.library.search_genres(genre)
-        confidence = min(confidence+bonus, 1.0)
+        confidence = min(confidence + bonus, 1.0)
         return data, confidence
 
-    def query_album(self, album, bonus)-> Tuple[dict, float]:
+    def query_album(self, album, bonus) -> Tuple[dict, float]:
         """Try and find an album."""
         bonus += 1
         data, confidence = self.library.search_albums(album)
-        confidence = min(confidence+bonus, 1.0)
+        confidence = min(confidence + bonus, 1.0)
         return data, confidence
 
-    def query_tag(self, tag, bonus)-> Tuple[dict, float]:
+    def query_tag(self, tag, bonus) -> Tuple[dict, float]:
         """Try and find an tag."""
         bonus += 1
         data, confidence = self.library.search_tags(tag)
-        confidence = min(confidence+bonus, 1.0)
+        confidence = min(confidence + bonus, 1.0)
         return data, confidence
 
-    def query_artist(self, artist, bonus)-> Tuple[dict, float]:
+    def query_artist(self, artist, bonus) -> Tuple[dict, float]:
         """Try and find an artist."""
         bonus += 1
         data, confidence = self.library.search_artists(artist)
-        confidence = min(confidence+bonus, 1.0)
+        confidence = min(confidence + bonus, 1.0)
         return data, confidence
 
-    def query_playlist(self, playlist, bonus)-> Tuple[dict, float]:
+    def query_playlist(self, playlist, bonus) -> Tuple[dict, float]:
         """Try and find an playlist."""
         bonus += 1
         data, confidence = self.library.search_playlists(playlist)
-        confidence = min(confidence+bonus, 1.0)
+        confidence = min(confidence + bonus, 1.0)
         return data, confidence
 
     def CPS_start(self, phrase, data):
@@ -313,7 +323,9 @@ class RoonSkill(CommonPlaySkill):
         if "path" in data["mycroft"]:
             r = self.library.play_path(default_zone_id, data["mycroft"]["path"])
         elif "session_key" in data["mycroft"]:
-            r = self.library.play_search_result(default_zone_id, data["item_key"], data["mycroft"]["session_key"])
+            r = self.library.play_search_result(
+                default_zone_id, data["item_key"], data["mycroft"]["session_key"]
+            )
         else:
             r = None
         if not self.is_success(r):
@@ -334,7 +346,6 @@ class RoonSkill(CommonPlaySkill):
         else:
             self.speak_dialog("ListeningTo", {"phrase": phrase, "zone_name": zone_name})
         self.log.info(f"Started playback of {data['title']} at zone {zone_name}")
-
 
     def playback_prerequisites_ok(self):
         """Check if the playback prereqs are met."""
@@ -388,7 +399,13 @@ class RoonSkill(CommonPlaySkill):
         else:
             self.speak_dialog("RoonNotConfigured")
 
-    @intent_handler(IntentBuilder("GetDefaultZone").optionally("Roon").require("List").require("Default").require("Zone"))
+    @intent_handler(
+        IntentBuilder("GetDefaultZone")
+        .optionally("Roon")
+        .require("List")
+        .require("Default")
+        .require("Zone")
+    )
     def handle_get_default_zone(self, message):
         """Handle get default zone command."""
         zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
@@ -398,7 +415,9 @@ class RoonSkill(CommonPlaySkill):
         else:
             self.speak_dialog("NoDefaultZone")
 
-    @intent_handler(IntentBuilder("ListZones").optionally("Roon").require("List").require("Zone"))
+    @intent_handler(
+        IntentBuilder("ListZones").optionally("Roon").require("List").require("Zone")
+    )
     def list_zones(self, message):
         """List available zones."""
         if self.roon_not_connected():
@@ -425,7 +444,12 @@ class RoonSkill(CommonPlaySkill):
                 },
             )
 
-    @intent_handler(IntentBuilder("ListOutputs").optionally("Roon").require("List").require("Device"))
+    @intent_handler(
+        IntentBuilder("ListOutputs")
+        .optionally("Roon")
+        .require("List")
+        .require("Device")
+    )
     def list_outputs(self, message):
         """List available devices."""
         if self.roon_not_connected():
@@ -451,7 +475,12 @@ class RoonSkill(CommonPlaySkill):
                 },
             )
 
-    @intent_handler(IntentBuilder("SetDefaultZone").optionally("Roon").require("Set").require("SetZone"))
+    @intent_handler(
+        IntentBuilder("SetDefaultZone")
+        .optionally("Roon")
+        .require("Set")
+        .require("SetZone")
+    )
     def handle_set_default_zone(self, message):
         """Handle set default zone command."""
         zone_name = message.data.get("SetZone")
@@ -472,9 +501,7 @@ class RoonSkill(CommonPlaySkill):
 
     def release_gui_after(self, seconds=10):
         """Release the gui after a number of seconds."""
-        self.schedule_event(
-            self.release_gui, seconds
-        )
+        self.schedule_event(self.release_gui, seconds)
 
     def release_gui(self):
         """Release the gui now."""
@@ -496,14 +523,15 @@ class RoonSkill(CommonPlaySkill):
         default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
         self.roon.playback_control(default_zone_id, control="pause")
 
-    @intent_handler(IntentBuilder("Resume").one_of("PlayResume", "Resume").optionally("Roon"))
+    @intent_handler(
+        IntentBuilder("Resume").one_of("PlayResume", "Resume").optionally("Roon")
+    )
     def handle_resume(self):
         """Resume playback."""
         if self.roon_not_connected():
             return
         default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
         self.roon.playback_control(default_zone_id, control="play")
-
 
     @intent_handler(IntentBuilder("Next").require("Next").optionally("Roon"))
     def handle_next(self):
@@ -541,10 +569,17 @@ class RoonSkill(CommonPlaySkill):
         self.log.info("default_zone_id {}".format(default_zone_id))
         for output in self.outputs_for_zones(default_zone_id):
             r = self.roon.mute(output["output_id"], mute=False)
-            self.log.info(f"unmuting {output['display_name']} {r} {output['output_id']}")
+            self.log.info(
+                f"unmuting {output['display_name']} {r} {output['output_id']}"
+            )
 
-    @intent_handler(IntentBuilder("VolumeIncrease").require("Roon")
-                    .optionally("Set").optionally("Volume").require("Increase"))
+    @intent_handler(
+        IntentBuilder("VolumeIncrease")
+        .require("Roon")
+        .optionally("Set")
+        .optionally("Volume")
+        .require("Increase")
+    )
     def handle_volume_increase(self, message):
         """Increase the volume a little bit."""
         if self.roon_not_connected():
@@ -553,8 +588,13 @@ class RoonSkill(CommonPlaySkill):
         self._step_volume(5)
         self.acknowledge()
 
-    @intent_handler(IntentBuilder("VolumeDecrease").require("Roon")
-                    .optionally("Set").optionally("Volume").require("Decrease"))
+    @intent_handler(
+        IntentBuilder("VolumeDecrease")
+        .require("Roon")
+        .optionally("Set")
+        .optionally("Volume")
+        .require("Decrease")
+    )
     def handle_volume_decrease(self, message):
         """Decrease the volume a little bit."""
         if self.roon_not_connected():
@@ -563,13 +603,12 @@ class RoonSkill(CommonPlaySkill):
         self._step_volume(-5)
         self.acknowledge()
 
-
     @intent_handler("SetVolumePercent.intent")
     def handle_set_volume_percent(self, message):
         """Set volume to a percentage."""
         if self.roon_not_connected():
             return
-        percent = extract_number(message.data['utterance'].replace('%', ''))
+        percent = extract_number(message.data["utterance"].replace("%", ""))
         percent = int(percent)
         zone_id = self.get_target_zone_or_output(message)
         self._set_volume(zone_id, percent)
@@ -580,8 +619,12 @@ class RoonSkill(CommonPlaySkill):
         default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
         self.log.info(self.outputs_for_zones(default_zone_id))
         for output in self.outputs_for_zones(default_zone_id):
-            r = self.roon.change_volume(output["output_id"], step, method="relative_step")
-            self.log.info(f"changing vol={step} {output['display_name']} {r} {output['output_id']}")
+            r = self.roon.change_volume(
+                output["output_id"], step, method="relative_step"
+            )
+            self.log.info(
+                f"changing vol={step} {output['display_name']} {r} {output['output_id']}"
+            )
 
     def _set_volume(self, zone_or_output_id, percent):
         """Set volume to a percentage."""
@@ -593,8 +636,10 @@ class RoonSkill(CommonPlaySkill):
             outputs.append(self.library.outputs[zone_or_output_id])
 
         for output in outputs:
-            self.log.info(f"changing vol={percent} {output['display_name']} {r} {output['output_id']}")
             r = self.roon.change_volume(output["output_id"], percent)
+            self.log.info(
+                f"changing vol={percent} {output['display_name']} {r} {output['output_id']}"
+            )
 
     @intent_handler("ShuffleOn.intent")
     def handle_shuffle_on(self, message):
@@ -624,10 +669,11 @@ class RoonSkill(CommonPlaySkill):
         if self.is_success(r):
             self.acknowledge()
 
-    def _set_repeat(self, zone_or_output_id, loop: Literal["loop", "loop_one", "disabled"]):
+    def _set_repeat(
+        self, zone_or_output_id, loop: Literal["loop", "loop_one", "disabled"]
+    ):
         data = {"zone_or_output_id": zone_or_output_id, "loop": loop}
         return self.roon._request(SERVICE_TRANSPORT + "/change_settings", data)
-
 
     def get_target_zone(self, message):
         """Get the target zone id from a user's query."""
@@ -638,7 +684,9 @@ class RoonSkill(CommonPlaySkill):
         if confidence < 0.6:
             return None
         if zone:
-            self.log.info(f"extracting target zone from {zone_name}. Found {zone['display_name']}")
+            self.log.info(
+                f"extracting target zone from {zone_name}. Found {zone['display_name']}"
+            )
             return zone["zone_id"]
 
     def get_target_output(self, message):
@@ -650,7 +698,9 @@ class RoonSkill(CommonPlaySkill):
         if confidence < 0.6:
             return None
         if output:
-            self.log.info(f"extracting target output from {output_name}. Found {output['display_name']}")
+            self.log.info(
+                f"extracting target output from {output_name}. Found {output['display_name']}"
+            )
             return output["output_id"]
 
     def get_target_zone_or_output(self, message):
@@ -669,12 +719,11 @@ class RoonSkill(CommonPlaySkill):
         return self.library.zones[zone_id]["outputs"]
 
     def zone_name(self, zone_id):
-       """Get the zone name."""
-       zone = self.library.zones.get(zone_id)
-       if not zone:
-           return None
-       return zone.get("display_name")
-
+        """Get the zone name."""
+        zone = self.library.zones.get(zone_id)
+        if not zone:
+            return None
+        return zone.get("display_name")
 
     def is_success(self, roon_response):
         """Check if a roon response was successful."""
@@ -683,6 +732,7 @@ class RoonSkill(CommonPlaySkill):
         if isinstance(roon_response, dict):
             return "is_error" not in roon_response
         return False
+
 
 def create_skill():
     """Create the Roon Skill."""
