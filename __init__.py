@@ -1,6 +1,6 @@
 """Roon Skill."""
 import asyncio
-from typing import Optional, Literal, Tuple, Dict
+from typing import Optional, Literal, Tuple, Dict, Any, Union
 import re
 import os
 import datetime
@@ -145,29 +145,54 @@ class RoonSkill(CommonPlaySkill):
         combined = sorted(set(zone_names + output_names))
         self._write_entity_file("zone_or_output", combined)
 
-    def CPS_match_query_phrase(self, phrase):
+    def CPS_match_query_phrase(
+        self, utterance
+    ) -> Optional[Tuple[str, CPSMatchLevel, Optional[Dict]]]:
         """Handle common play framework query.
 
-        Checks if the skill can play the utterance.
+        This method responds wether the skill can play the input phrase.
+
+         The method is invoked by the PlayBackControlSkill.
+
+         Returns: tuple (matched phrase(str),
+                         match level(CPSMatchLevel),
+                         optional data(dict))
+                  or None if no match was found.
         """
+        phrase = utterance
         self.log.info("CPS_match_query_phrase: {}".format(phrase))
         roon_specified = any(x in phrase for x in ROON_KEYWORDS)
         if not self.playback_prerequisites_ok():
             if roon_specified:
                 return phrase, CPSMatchLevel.GENERIC
-            else:
-                return None
+            return None
 
         bonus = 0.1 if roon_specified else 0.0
-        phrase = re.sub(self.translate_regex("on_roon"), "", phrase, re.IGNORECASE)
-        self.log.info("phrase: {}".format(phrase))
+        phrase = re.sub(self.translate_regex("OnRoon"), "", phrase, re.IGNORECASE)
+        res = re.search(self.translate_regex("AtZone"), phrase, re.IGNORECASE)
+        zone_name = None
+        zone_id = None
+        if res:
+            try:
+                zone_name = res.group("zone_or_output")
+                self.log.info(f"Extracted raw {zone_name}")
+                zone_id = self.get_target_zone_or_output(zone_name)
+                self.log.info(f"matched to  {zone_name}")
+                phrase = res.group("query")
+            except IndexError:
+                self.log.info("failed to extract zone")
+        self.log.info(f"utterance: {utterance}")
+        self.log.info(f"phrase: {phrase}")
+        if zone_id:
+            self.log.info(f"zone_name: {zone_name}".format(zone_name))
+            self.log.info(f"zone_id: {self.zone_name(zone_id)}")
         self.log.info("bonus: {}".format(bonus))
         data, confidence = self.specific_query(phrase, bonus)
         if not data:
             data, confidence = self.generic_query(phrase, bonus)
         if data:
-            self.log.info("Roon Confidence: {}".format(confidence))
-            self.log.info("              data: {}".format(data))
+            self.log.info(f"Roon Confidence: {confidence}")
+            self.log.info(f"              data: {data}")
             if roon_specified:
                 level = CPSMatchLevel.EXACT
             else:
@@ -180,10 +205,11 @@ class RoonSkill(CommonPlaySkill):
                 else:
                     level = CPSMatchLevel.TITLE
                 phrase += " on roon"
-            self.log.info("Matched {} with level {} to {}".format(phrase, level, data))
+            self.log.info(f"Matched {phrase} with level {level} to {data}")
+            data["mycroft"]["zone_id"] = zone_id
             return phrase, level, data
-        else:
-            self.log.info("Couldn't find anything on Roon")
+        self.log.info("Couldn't find anything on Roon")
+        return None
 
     def specific_query(self, phrase, bonus):
         """
@@ -317,24 +343,25 @@ class RoonSkill(CommonPlaySkill):
         if self.roon_not_connected():
             raise RoonNotAuthorizedError()
 
-        default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
-        if not default_zone_id:
+        zone_id = data["mycroft"].get("zone_id")
+        if not zone_id:
             self.speak_dialog("NoDefaultZone")
             return
         if "path" in data["mycroft"]:
-            r = self.library.play_path(default_zone_id, data["mycroft"]["path"])
+            r = self.library.play_path(zone_id, data["mycroft"]["path"])
         elif "session_key" in data["mycroft"]:
             r = self.library.play_search_result(
-                default_zone_id, data["item_key"], data["mycroft"]["session_key"]
+                zone_id, data["item_key"], data["mycroft"]["session_key"]
             )
         else:
             r = None
         if not self.is_success(r):
+            self.speak_playback_error(phrase, data, r)
             self.log.error(f"Could not play {phrase} from {data}. Got response {r}")
             return
 
         self.acknowledge()
-        zone_name = self.zone_name(default_zone_id)
+        zone_name = self.zone_name(zone_id)
         data["zone_name"] = zone_name
         media_type = data["mycroft"].get("type")
         if media_type:
@@ -347,6 +374,29 @@ class RoonSkill(CommonPlaySkill):
         else:
             self.speak_dialog("ListeningTo", {"phrase": phrase, "zone_name": zone_name})
         self.log.info(f"Started playback of {data['title']} at zone {zone_name}")
+
+    def speak_playback_error(
+        self,
+        phrase: str,
+        data: Dict[str, Any],
+        roon_response: Union[str | Dict[str, Any]],
+    ) -> None:
+        if isinstance(roon_response, str):
+            if "ZoneNotFound" in roon_response:
+                zone_id = data["mycroft"].get("zone_id")
+                if zone_id:
+                    zone_name = self.zone_name(zone_id)
+                    self.speak_dialog("ZoneNotFound-named", {"zone_name": zone_name})
+                    return
+                else:
+                    self.speak_dialog("ZoneNotFound")
+                    return
+        elif isinstance(roon_response, dict):
+            if "message" in roon_response:
+                self.speak(roon_response["message"])
+                return
+
+        self.speak_dialog("PlaybackFailed", data)
 
     def playback_prerequisites_ok(self):
         """Check if the playback prereqs are met."""
@@ -388,7 +438,6 @@ class RoonSkill(CommonPlaySkill):
             self.speak_dialog("AuthorizationRequired")
         elif self.settings.get("auth").get("roon_server_name"):
             auth = self.settings.get("auth")
-            self.log.info(auth)
             self.speak_dialog(
                 "RoonStatus",
                 {
@@ -424,7 +473,6 @@ class RoonSkill(CommonPlaySkill):
         if self.roon_not_connected():
             return
         zones = self.roon.zones
-        self.log.info(zones)
         if len(zones) == 0:
             self.speak_dialog("NoZonesAvailable")
             return
@@ -667,11 +715,13 @@ class RoonSkill(CommonPlaySkill):
         data = {"zone_or_output_id": zone_or_output_id, "loop": loop}
         return self.roon._request(SERVICE_TRANSPORT + "/change_settings", data)
 
-    def get_target_zone(self, message):
+    def get_target_zone(self, message: Union[str, Dict[str, Any]]) -> Optional[str]:
         """Get the target zone id from a user's query."""
-        zone_name = message.data.get("zone_or_output")
+        if isinstance(message, str):
+            zone_name = message
+        else:
+            zone_name = message.data.get("zone_or_output")
         zones = list(self.library.zones.values())
-        self.log.info(zones)
         zone, confidence = match_one(zone_name, zones, "display_name")
         if confidence < 0.6:
             return None
@@ -681,11 +731,13 @@ class RoonSkill(CommonPlaySkill):
             )
             return zone["zone_id"]
 
-    def get_target_output(self, message):
+    def get_target_output(self, message: Union[str, Dict[str, Any]]) -> Optional[str]:
         """Get the target output id from a user's query."""
-        output_name = message.data.get("zone_or_output")
+        if isinstance(message, str):
+            output_name = message
+        else:
+            output_name = message.data.get("zone_or_output")
         outputs = list(self.library.outputs.values())
-        self.log.info(outputs)
         output, confidence = match_one(output_name, outputs, "display_name")
         if confidence < 0.6:
             return None
@@ -695,7 +747,9 @@ class RoonSkill(CommonPlaySkill):
             )
             return output["output_id"]
 
-    def get_target_zone_or_output(self, message):
+    def get_target_zone_or_output(
+        self, message: Union[str, Dict[str, Any]]
+    ) -> Optional[str]:
         """Get the target zone or output id from a user's query."""
         zone_id = self.get_target_zone(message)
         if zone_id:
