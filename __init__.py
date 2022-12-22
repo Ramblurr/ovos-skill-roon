@@ -51,10 +51,10 @@ class RoonSkill(CommonPlaySkill):
             self.loop = asyncio.get_running_loop()
         self.cancel_scheduled_event("RoonLogin")
         # Setup handlers for playback control messages
-        # self.add_event("mycroft.audio.service.next", self.next_track)
-        # self.add_event("mycroft.audio.service.prev", self.prev_track)
-        # self.add_event("mycroft.audio.service.pause", self.pause)
-        # self.add_event("mycroft.audio.service.resume", self.resume)
+        self.add_event("mycroft.audio.service.next", self.handle_next)
+        self.add_event("mycroft.audio.service.prev", self.handle_prev)
+        self.add_event("mycroft.audio.service.pause", self.handle_pause)
+        self.add_event("mycroft.audio.service.resume", self.handle_resume)
         self.settings_change_callback = self.on_websettings_changed
         # Retry in 5 minutes
         self.schedule_repeating_event(
@@ -103,7 +103,10 @@ class RoonSkill(CommonPlaySkill):
             self.library.update_cache(self.roon)
 
     def CPS_match_query_phrase(self, phrase):
-        """Handle common play framework query. Checks if the skill can play the utterance."""
+        """Handle common play framework query.
+
+        Checks if the skill can play the utterance.
+        """
         self.log.info("CPS_match_query_phrase: {}".format(phrase))
         roon_specified = any(x in phrase for x in ROON_KEYWORDS)
         if not self.playback_prerequisites_ok():
