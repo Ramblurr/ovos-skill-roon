@@ -1,5 +1,6 @@
+"""Roon Skill"""
 import asyncio
-from typing import Optional, Literal, Tuple
+from typing import Optional, Literal, Tuple, Dict
 import re
 import datetime
 from mycroft.skills.core import intent_handler
@@ -11,22 +12,24 @@ from roonapi import RoonApi
 from roonapi.constants import SERVICE_TRANSPORT
 
 from .discovery import discover, authenticate, InvalidAuth
-from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_PLAYLIST, TYPE_ARTIST, TYPE_ALBUM, TYPE_STATION, CONF_DEFAULT_ZONE_NAME, CONF_DEFAULT_ZONE_ID, NOTHING_FOUND
+from .const import ROON_APPINFO, ROON_KEYWORDS, TYPE_TAG, TYPE_PLAYLIST, TYPE_ARTIST, TYPE_ALBUM, TYPE_STATION, CONF_DEFAULT_ZONE_NAME, CONF_DEFAULT_ZONE_ID, NOTHING_FOUND, DIRECT_RESPONSE_CONFIDENCE, MATCH_CONFIDENCE
 from .library import RoonLibrary
 from .util import match_one
 
-# Confidence levels for generic play handling
-DIRECT_RESPONSE_CONFIDENCE = 0.8
+class RoonNotAuthorizedError(Exception):
+    """Error for when Roon isn't authorized."""
 
-MATCH_CONFIDENCE = 0.5
-
-LIBRARY_CACHE_UPDATE_MIN_INTERVAL_MINUTES = 2
+    pass
 
 class RoonSkill(CommonPlaySkill):
-    """Roon control"""
+    """Control roon with your voice."""
+
     library: Optional[RoonLibrary]
+    roon: Optional[RoonApi]
+    loop: Optional[asyncio.AbstractEventLoop]
 
     def __init__(self):
+        """Init class."""
         super(RoonSkill, self).__init__()
         # We cannot access any existing loop because each Skill runs in it's
         # own thread.
@@ -38,6 +41,7 @@ class RoonSkill(CommonPlaySkill):
         self.regexes = {}
 
     def initialize(self):
+        """Init skill."""
         super().initialize()
         self.log.info("roon init")
         if not self.loop:
@@ -59,11 +63,13 @@ class RoonSkill(CommonPlaySkill):
         self.on_websettings_changed()
 
     def shutdown(self):
+        """Shutdown skill."""
         self.cancel_scheduled_event("RoonLogin")
         if self.roon:
             self.roon.stop()
 
     def on_websettings_changed(self):
+        """Handle websettings change."""
         auth = self.settings.get("auth")
         if self.roon:
             self.cancel_scheduled_event("RoonLogin")
@@ -92,11 +98,12 @@ class RoonSkill(CommonPlaySkill):
             self.update_library_cache()
 
     def update_library_cache(self):
+        """Update library cache."""
         if self.library:
             self.library.update_cache(self.roon)
 
     def CPS_match_query_phrase(self, phrase):
-        """Handler for common play framework query. Checks if the skill can play the utterance"""
+        """Handle common play framework query. Checks if the skill can play the utterance."""
         self.log.info("CPS_match_query_phrase: {}".format(phrase))
         roon_specified = any(x in phrase for x in ROON_KEYWORDS)
         if not self.playback_prerequisites_ok():
@@ -109,17 +116,17 @@ class RoonSkill(CommonPlaySkill):
         phrase = re.sub(self.translate_regex("on_roon"), "", phrase, re.IGNORECASE)
         self.log.info("phrase: {}".format(phrase))
         self.log.info("bonus: {}".format(bonus))
-        data, confidence = self.continue_playback(phrase, bonus)
+        data, confidence = self.specific_query(phrase, bonus)
         if not data:
-            data, confidence = self.specific_query(phrase, bonus)
-            if not data:
-                data, confidence = self.generic_query(phrase, bonus)
+            data, confidence = self.generic_query(phrase, bonus)
         if data:
             self.log.info("Roon Confidence: {}".format(confidence))
             self.log.info('              data: {}'.format(data))
             if roon_specified:
                 level = CPSMatchLevel.EXACT
             else:
+                if confidence > 0.9 and phrase in data["title"].lower():
+                    level = CPSMatchLevel.MULTI_KEY
                 if confidence > 0.9:
                     level = CPSMatchLevel.TITLE
                 elif confidence < 0.5:
@@ -132,20 +139,10 @@ class RoonSkill(CommonPlaySkill):
         else:
             self.log.info("Couldn't find anything on Roon")
 
-    def continue_playback(self, phrase, bonus):
-        if phrase.strip() == 'roon':
-            return (1.0,
-                    {
-                        'data': None,
-                        'name': None,
-                        'type': 'continue'
-                    })
-        else:
-            return NOTHING_FOUND
-
     def specific_query(self, phrase, bonus):
         """
         Check if the phrase can be matched against a specific roon request.
+
         This includes asking for radio, playlists, albums, artists, or tracks.
         Arguments:
             phrase (str): Text to match against
@@ -165,6 +162,14 @@ class RoonSkill(CommonPlaySkill):
         if match:
             playlist = match.groupdict()["playlist"]
             return self.query_playlist(playlist, bonus)
+
+        # Check tags
+        match = re.match(self.translate_regex("tag"), phrase,
+                         re.IGNORECASE)
+        self.log.info("tag match: {}".format(match))
+        if match:
+            tag = match.groupdict()["tag"]
+            return self.query_tag(tag, bonus)
 
         # Check artist
         match = re.match(self.translate_regex("artist"), phrase,
@@ -196,21 +201,20 @@ class RoonSkill(CommonPlaySkill):
         return NOTHING_FOUND
 
     def generic_query(self, phrase, bonus):
-        """Check for a generic query, not asking for any special feature.
-        This will try to parse the entire phrase in the following order
-        - As a user playlist
-        - As an album
-        - As a track
-        - As a public playlist
+        """Search roon and return the top result
+
         Arguments:
             phrase (str): Text to match against
             bonus (float): Any existing match bonus
         Returns: Tuple with confidence and data or NOTHING_FOUND
         """
         self.log.info('Handling "{}" as a generic query...'.format(phrase))
-        return NOTHING_FOUND
+
+        d, c = self.library.search("generic_search", phrase)
+        return d, bonus+c
 
     def translate_regex(self, regex):
+        """Translate the given regex."""
         if regex not in self.regexes:
             path = self.find_resource(regex + '.regex')
             if path:
@@ -221,6 +225,7 @@ class RoonSkill(CommonPlaySkill):
 
     def query_radio(self, station):
         """Try to find a radio station.
+
         Arguments:
           station (str): station to search for
         Returns: Tuple with confidence and data or NOTHING_FOUND
@@ -243,6 +248,13 @@ class RoonSkill(CommonPlaySkill):
         confidence = min(confidence+bonus, 1.0)
         return data, confidence
 
+    def query_tag(self, tag, bonus)-> Tuple[dict, float]:
+        """Try and find an tag."""
+        bonus += 1
+        data, confidence = self.library.search_tags(tag)
+        confidence = min(confidence+bonus, 1.0)
+        return data, confidence
+
     def query_artist(self, artist, bonus)-> Tuple[dict, float]:
         """Try and find an artist."""
         bonus += 1
@@ -257,41 +269,56 @@ class RoonSkill(CommonPlaySkill):
         confidence = min(confidence+bonus, 1.0)
         return data, confidence
 
-
-
     def CPS_start(self, phrase, data):
-        """Handler for common play framework start. Starts playback"""
+        """Handle common play framework start.
+
+        Starts playback of the given item.
+        """
         self.log.info("CPS_start: {} {}".format(phrase, data))
         if self.roon_not_connected():
             raise RoonNotAuthorizedError()
-        type = data["mycroft"]["type"]
+
         default_zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
         if not default_zone_id:
             self.speak_dialog("NoDefaultZone")
             return
-        r = self.roon.play_media(default_zone_id, data["mycroft"]["path"])
-        self.log.info("zone_id: {} result: {}".format(default_zone_id, r))
-        if r == True:
-            self.acknowledge()
+        if "path" in data["mycroft"]:
+            r = self.library.play_path(default_zone_id, data["mycroft"]["path"])
+        elif "session_key" in data["mycroft"]:
+            r = self.library.play_search_result(default_zone_id, data["item_key"], data["mycroft"]["session_key"])
+        else:
+            r = None
+        if not self.is_success(r):
+            self.log.error(f"Could not play {phrase} from {data}. Got response {r}")
+            return
 
-        zone_name = {"zone_name": self.settings.get(CONF_DEFAULT_ZONE_NAME)}
-        media_type = data["mycroft"]["type"]
-        if media_type == TYPE_STATION:
-            self.speak_dialog("ListeningToStation", data|zone_name)
-        elif media_type == TYPE_ALBUM:
-            self.speak_dialog("ListeningToAlbum", data|zone_name)
-        elif media_type == TYPE_ARTIST:
-            self.speak_dialog("ListeningToAlbum", data|zone_name)
+        self.acknowledge()
+        zone_name = self.zone_name(default_zone_id)
+        data["zone_name"] = zone_name
+        media_type = data["mycroft"].get("type")
+        if media_type:
+            if media_type == TYPE_STATION:
+                self.speak_dialog("ListeningToStation", data)
+            elif media_type == TYPE_ALBUM:
+                self.speak_dialog("ListeningToAlbum", data)
+            elif media_type == TYPE_ARTIST:
+                self.speak_dialog("ListeningToAlbum", data)
+        else:
+            self.speak_dialog("ListeningTo", {"phrase": phrase, "zone_name": zone_name})
+        self.log.info(f"Started playback of {data['title']} at zone {zone_name}")
 
 
     def playback_prerequisites_ok(self):
+        """Check if the playback prereqs are met."""
         return not self.roon_not_connected()
 
     def handle_stop(self, message):
+        """Handle stop command."""
         self.bus.emit(message.reply("mycroft.stop"))
 
     @intent_handler("ConfigureRoon.intent")
-    def configure_roon(self, message):
+    def handle_configure_roon(self, message):
+        """Handle configure command."""
         if self.roon or self.settings.get("auth"):
             self.speak_dialog("AlreadyConfigured")
             self.settings["auth_waiting"] = False
@@ -318,7 +345,8 @@ class RoonSkill(CommonPlaySkill):
             self.settings["auth_waiting"] = True
 
     @intent_handler("RoonStatus.intent")
-    def roon_status(self, message):
+    def handle_roon_status(self, message):
+        """Handle roon status command."""
         if self.settings.get("auth_waiting"):
             self.speak_dialog("AuthorizationWaiting")
             self.speak_dialog("AuthorizationRequired")
@@ -337,7 +365,8 @@ class RoonSkill(CommonPlaySkill):
             self.speak_dialog("RoonNotConfigured")
 
     @intent_handler(IntentBuilder("GetDefaultZone").optionally("Roon").require("List").require("Default").require("Zone"))
-    def get_default_zone(self, message):
+    def handle_get_default_zone(self, message):
+        """Handle get default zone command."""
         zone_id = self.settings.get(CONF_DEFAULT_ZONE_ID)
         if zone_id:
             zone = self.roon.zones[zone_id]
@@ -347,10 +376,11 @@ class RoonSkill(CommonPlaySkill):
 
     @intent_handler(IntentBuilder("ListZones").optionally("Roon").require("List").require("Zone"))
     def list_zones(self, message):
-        """List available zones"""
+        """List available zones."""
         if self.roon_not_connected():
             return
         zones = self.roon.zones
+        self.log.info(zones)
         if len(zones) == 0:
             self.speak_dialog("NoZonesAvailable")
             return
@@ -373,7 +403,7 @@ class RoonSkill(CommonPlaySkill):
 
     @intent_handler(IntentBuilder("ListOutputs").optionally("Roon").require("List").require("Device"))
     def list_outputs(self, message):
-        """List available devices"""
+        """List available devices."""
         if self.roon_not_connected():
             return
         outputs = self.roon.outputs
@@ -398,7 +428,8 @@ class RoonSkill(CommonPlaySkill):
             )
 
     @intent_handler(IntentBuilder("SetDefaultZone").optionally("Roon").require("Set").require("SetZone"))
-    def set_default_zone(self, message):
+    def handle_set_default_zone(self, message):
+        """Handle set default zone command."""
         zone_name = message.data.get("SetZone")
         zone, conf = match_one(zone_name, self.roon.zones.values(), "display_name")
         self.log.info("zone {} conf {}".format(zone, conf))
@@ -409,17 +440,20 @@ class RoonSkill(CommonPlaySkill):
         self.release_gui_after()
 
     def roon_not_connected(self):
+        """Check if the skill is not connected to Roon."""
         if not self.roon:
             self.speak_dialog("RoonNotConfigured")
             return True
         return False
 
     def release_gui_after(self, seconds=10):
+        """Release the gui after a number of seconds."""
         self.schedule_event(
             self.release_gui, seconds
         )
 
     def release_gui(self):
+        """Release the gui now."""
         self.gui.release()
 
     @intent_handler(IntentBuilder("Stop").require("Stop").optionally("Roon"))
@@ -539,16 +573,24 @@ class RoonSkill(CommonPlaySkill):
 
 
     def outputs_for_zones(self, zone_id):
+        """Get the outputs for a zone."""
         return self.roon.zones[zone_id]["outputs"]
 
+    def zone_name(self, zone_id):
+       zone = self.roon.zones.get(zone_id)
+       if not zone:
+           return None
+       return zone.get("display_name")
+
+
     def is_success(self, roon_response):
-        r = "Success" in roon_response
-        if r:
-            self.log.info(f"roon error: {r}")
-        return r
+        """Check if a roon response was successful."""
+        if isinstance(roon_response, str):
+            return "Success" in roon_response
+        if isinstance(roon_response, dict):
+            return "is_error" not in roon_response
+        return False
 
 def create_skill():
+    """Create the Roon Skill."""
     return RoonSkill()
-
-class RoonNotAuthorizedError(Exception):
-    pass

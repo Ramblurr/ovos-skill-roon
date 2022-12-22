@@ -17,3 +17,6 @@ class TestMatchOne(unittest.TestCase):
         self.assertEqual(r["title"], "Balkan Gypsy")
         r, _ = util.match_one("balkan gypsy remix edition", playlists, "title")
         self.assertEqual(r["title"], "Balkan Gypsy (2023 remix edition)")
+
+        r, _ = util.match_one("booker t and the mgs", playlists, "title")
+        print(r, _)

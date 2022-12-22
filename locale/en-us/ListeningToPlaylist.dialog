@@ -1,4 +1,4 @@
-Listening to the playlist {{playlist}}
-Now playing the playlist {{playlist}}
-Okay, let's hear your playlist {{playlist}}
-Got it. Next up, your playlist {{playlist}}
+Listening to the playlist {{playlist}} at {{zone_name}}
+Now playing the playlist {{playlist}} at {{zone_name}}
+Okay, let's hear your playlist {{playlist}} at {{zone_name}}
+Got it. Next up, your playlist {{playlist}} at {{zone_name}}

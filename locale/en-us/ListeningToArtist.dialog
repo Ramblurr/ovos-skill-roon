@@ -1,3 +1,3 @@
-Now listening to {{artist}}
-Listening to {{artist}}
-Playing songs by {{artist}}
+Now listening to {{artist}} at {{zone_name}}
+Listening to {{artist}} at {{zone_name}}
+Playing songs by {{artist}} at {{zone_name}}
