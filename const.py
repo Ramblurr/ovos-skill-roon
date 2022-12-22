@@ -1,4 +1,5 @@
 """Constants for the Roon skill"""
+from typing import Literal
 
 AUTHENTICATE_TIMEOUT = 5
 
@@ -38,3 +39,19 @@ MATCH_CONFIDENCE = 0.5
 PAGE_SIZE = 100
 
 DEFAULT_VOLUME_STEP = 10
+
+
+SearchableItemTypes = Literal[
+    TYPE_TRACK, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_TAG
+]
+FilterableItemTypes = Literal[TYPE_STATION, TYPE_GENRE]
+
+ItemTypes = Literal[
+    TYPE_TRACK,
+    TYPE_ALBUM,
+    TYPE_ARTIST,
+    TYPE_PLAYLIST,
+    TYPE_GENRE,
+    TYPE_STATION,
+    TYPE_TAG,
+]

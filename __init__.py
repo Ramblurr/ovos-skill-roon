@@ -17,6 +17,7 @@ from .const import (
     DEFAULT_VOLUME_STEP,
     ROON_APPINFO,
     ROON_KEYWORDS,
+    TYPE_GENRE,
     TYPE_TAG,
     TYPE_PLAYLIST,
     TYPE_ARTIST,
@@ -221,38 +222,17 @@ class RoonSkill(CommonPlaySkill):
             bonus (float): Any existing match bonus
         Returns: Tuple with confidence and data or NOTHING_FOUND
         """
-        # Check radio stations
-        match = re.match(self.translate_regex("radio"), phrase, re.IGNORECASE)
-        self.log.info("station match: {}".format(match))
-        if match:
-            return self.query_radio(match.groupdict()["station"])
-
-        # Check playlist
-        match = re.match(self.translate_regex("playlist"), phrase, re.IGNORECASE)
-        if match:
-            playlist = match.groupdict()["playlist"]
-            return self.query_playlist(playlist, bonus)
-
-        # Check tags
-        match = re.match(self.translate_regex("tag"), phrase, re.IGNORECASE)
-        self.log.info("tag match: {}".format(match))
-        if match:
-            tag = match.groupdict()["tag"]
-            return self.query_tag(tag, bonus)
-
-        # Check artist
-        match = re.match(self.translate_regex("artist"), phrase, re.IGNORECASE)
-        self.log.info("artist match: {}".format(match))
-        if match:
-            artist = match.groupdict()["artist"]
-            return self.query_artist(artist, bonus)
-
-        # Check albums
-        match = re.match(self.translate_regex("album"), phrase, re.IGNORECASE)
-        self.log.info("album match: {}".format(match))
-        if match:
-            album = match.groupdict()["album"]
-            return self.query_album(album, bonus)
+        for item_type in [
+            TYPE_STATION,
+            TYPE_PLAYLIST,
+            TYPE_TAG,
+            TYPE_ARTIST,
+            TYPE_ALBUM,
+        ]:
+            match = re.match(self.translate_regex(item_type), phrase, re.IGNORECASE)
+            self.log.info(f"{item_type} match: {match}")
+            if match:
+                return self.query_type(item_type, match.groupdict()[item_type], bonus)
 
         # Check genres
         match = re.match(self.translate_regex("genre1"), phrase, re.IGNORECASE)
@@ -261,7 +241,7 @@ class RoonSkill(CommonPlaySkill):
         self.log.info("genre match: {}".format(match))
         if match:
             genre = match.groupdict()["genre"]
-            return self.query_genre(genre, bonus)
+            return self.query_type(TYPE_GENRE, genre, bonus)
 
         return NOTHING_FOUND
 
@@ -288,49 +268,10 @@ class RoonSkill(CommonPlaySkill):
                 self.regexes[regex] = string
         return self.regexes[regex]
 
-    def query_radio(self, station):
-        """Try to find a radio station.
-
-        Arguments:
-          station (str): station to search for
-        Returns: Tuple with confidence and data or NOTHING_FOUND
-        """
-        probs = self.library.search_stations(station)
-        self.log.info("probs: {}".format(probs))
-        return probs
-
-    def query_genre(self, genre, bonus) -> Tuple[dict, float]:
-        """Try and find an genre."""
+    def query_type(self, item_type, query, bonus) -> Tuple[dict, float]:
+        """Try and find a specific item type."""
         bonus += 1
-        data, confidence = self.library.search_genres(genre)
-        confidence = min(confidence + bonus, 1.0)
-        return data, confidence
-
-    def query_album(self, album, bonus) -> Tuple[dict, float]:
-        """Try and find an album."""
-        bonus += 1
-        data, confidence = self.library.search_albums(album)
-        confidence = min(confidence + bonus, 1.0)
-        return data, confidence
-
-    def query_tag(self, tag, bonus) -> Tuple[dict, float]:
-        """Try and find an tag."""
-        bonus += 1
-        data, confidence = self.library.search_tags(tag)
-        confidence = min(confidence + bonus, 1.0)
-        return data, confidence
-
-    def query_artist(self, artist, bonus) -> Tuple[dict, float]:
-        """Try and find an artist."""
-        bonus += 1
-        data, confidence = self.library.search_artists(artist)
-        confidence = min(confidence + bonus, 1.0)
-        return data, confidence
-
-    def query_playlist(self, playlist, bonus) -> Tuple[dict, float]:
-        """Try and find an playlist."""
-        bonus += 1
-        data, confidence = self.library.search_playlists(playlist)
+        data, confidence = self.library.search_type(query, item_type)
         confidence = min(confidence + bonus, 1.0)
         return data, confidence
 

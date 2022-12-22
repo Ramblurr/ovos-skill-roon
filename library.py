@@ -3,6 +3,9 @@
 import datetime
 from typing import Any, Dict, List, Optional, Tuple, Literal
 from .const import (
+    SearchableItemTypes,
+    FilterableItemTypes,
+    ItemTypes,
     TYPE_TRACK,
     TYPE_STATION,
     TYPE_TAG,
@@ -48,19 +51,6 @@ HierarchyTypes = Literal[
     "composers",
     "search",
 ]
-ItemTypes = Literal[
-    TYPE_TRACK,
-    TYPE_ALBUM,
-    TYPE_ARTIST,
-    TYPE_PLAYLIST,
-    TYPE_GENRE,
-    TYPE_STATION,
-    TYPE_TAG,
-]
-SearchableItemTypes = Literal[
-    TYPE_TRACK, TYPE_ALBUM, TYPE_ARTIST, TYPE_PLAYLIST, TYPE_TAG
-]
-FilterableItemTypes = Literal[TYPE_STATION, TYPE_GENRE]
 
 
 def item_payload(roonapi, item, list_image_id):
@@ -176,7 +166,17 @@ class RoonLibrary:
             }
         }
 
-    def _navigate_search(
+    def search_type(
+        self, phrase: str, item_type: ItemTypes
+    ) -> Tuple[Optional[Dict], int]:
+        if item_type == TYPE_GENRE:
+            return self.search_genres(phrase)
+        if item_type == TYPE_STATION:
+            return self.search_stations(phrase)
+
+        return self._navigate_type_search(phrase, item_type)
+
+    def _navigate_type_search(
         self, phrase: str, item_type: SearchableItemTypes
     ) -> Tuple[Optional[Dict], int]:
         mapping = {
@@ -430,26 +430,6 @@ class RoonLibrary:
         r = self.roon.browse_browse(opts)
         self.log.info(f"Play result: {r}")
         return r
-
-    def search_tags(self, phrase: str) -> Tuple[Optional[Dict], int]:
-        """Search for an tag."""
-        return self._navigate_search(phrase, TYPE_TAG)
-
-    def search_albums(self, phrase: str) -> Tuple[Optional[Dict], int]:
-        """Search for an album."""
-        return self._navigate_search(phrase, TYPE_ALBUM)
-
-    def search_tracks(self, phrase: str) -> Tuple[Optional[Dict], int]:
-        """Search for an track."""
-        return self._navigate_search(phrase, TYPE_TRACK)
-
-    def search_artists(self, phrase: str) -> Tuple[Optional[Dict], int]:
-        """Search for an artist."""
-        return self._navigate_search(phrase, TYPE_ARTIST)
-
-    def search_playlists(self, phrase: str) -> Tuple[Optional[Dict], int]:
-        """Search playlists."""
-        return self._navigate_search(phrase, TYPE_PLAYLIST)
 
     def match_and_enrich(
         self,
