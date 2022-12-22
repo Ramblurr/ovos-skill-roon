@@ -1,1 +1,1 @@
-(?P<query>.*)\b(at|in|on) (our |my |the |)(?P<zone_or_output>.*)
+(?P<query>.*)\b(at|in|on) (our|my|the|) (?P<zone_or_output>.*)

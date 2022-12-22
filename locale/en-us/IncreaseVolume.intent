@@ -1,4 +1,4 @@
-(higher|high|raise|boost|increase|up|more|loud|louder|rise) volume ( (on|in|at) {zone_or_output} | )
-(raise|boost|increase|up|more|loud|louder|rise) {zone_or_output} (volume|)
-(set|turn|make) volume ( (on|in|at) {zone_or_output} | ) (raise|boost|increase|up|more|loud|louder|rise|higher)
-(set|turn|make) {zone_or_output} (volume|) (raise|boost|increase|up|more|loud|louder|rise|higher)
+(higher|high|raise|boost|increase|up|more|loud|louder|rise) volume ( (on|in|at) (the|) {zone_or_output} | )
+(raise|boost|increase|up|more|loud|louder|rise) (the|) {zone_or_output} (volume|)
+(set|turn|make) volume ( (on|in|at) (the|) {zone_or_output} | ) (raise|boost|increase|up|more|loud|louder|rise|higher)
+(set|turn|make) (the|) {zone_or_output} (volume|) (raise|boost|increase|up|more|loud|louder|rise|higher)

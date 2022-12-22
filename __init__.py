@@ -465,6 +465,9 @@ class RoonSkill(CommonPlaySkill):
         else:
             self.speak_dialog("NoDefaultZone")
 
+    def converse(self, message: str):
+        return False
+
     @intent_handler(
         IntentBuilder("ListZones").optionally("Roon").require("List").require("Zone")
     )
@@ -564,7 +567,7 @@ class RoonSkill(CommonPlaySkill):
         zone_id = self.get_target_zone_or_output(message)
         self.roon.playback_control(zone_id, control="stop")
 
-    @intent_handler(IntentBuilder("Pause").require("Pause").optionally("Roon"))
+    @intent_handler("Pause.intent")
     def handle_pause(self, message):
         """Pause playback."""
         if self.roon_not_connected():
@@ -572,9 +575,7 @@ class RoonSkill(CommonPlaySkill):
         zone_id = self.get_target_zone_or_output(message)
         self.roon.playback_control(zone_id, control="pause")
 
-    @intent_handler(
-        IntentBuilder("Resume").one_of("PlayResume", "Resume").optionally("Roon")
-    )
+    @intent_handler("Resume.intent")
     def handle_resume(self, message):
         """Resume playback."""
         if self.roon_not_connected():

@@ -1,2 +1,2 @@
-(turn(| off)|switch(| off)|disable|unset) roon (shuffle|shuffling)( (on|in|at) {zone_or_output} | )
-set roon (shuffle|shuffling) off( (on|in|at) {zone_or_output} | )
+(turn(| off)|switch(| off)|disable|unset) roon (shuffle|shuffling)( (on|in|at) (the|) {zone_or_output} | )
+set roon (shuffle|shuffling) off( (on|in|at) (the|) {zone_or_output} | )

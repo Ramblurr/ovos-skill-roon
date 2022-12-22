@@ -1,3 +1,3 @@
-mute (volume|) ( (on|in|at) {zone_or_output} | )
-mute {zone_or_output}
-(turn on|set|enable|) mute (on|in|at|) {zone_or_output}
+mute (volume|) ( (on|in|at) (the|) {zone_or_output} | )
+mute (the|) {zone_or_output}
+(turn on|set|enable|) mute (on|in|at|) (the|) {zone_or_output}

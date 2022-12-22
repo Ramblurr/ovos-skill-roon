@@ -2,10 +2,10 @@
 (raise|increase|lower|drop) (room|roon|rune|ruin) volume to {percent} (percent|%|)
 (set|turn) (room|roon|rune|ruin) volume to {percent} (percent|%|)
 
-volume ( (on|in|at) {zone_or_output} | ) to {percent} (percent|%|)
-(raise|increase|lower|drop) volume ( (on|in|at) {zone_or_output} | ) to {percent} (percent|%|)
-(set|turn) volume ( (on|in|at) {zone_or_output} | ) to {percent} (percent|%|)
+volume ( (on|in|at) (the|) {zone_or_output} | ) to {percent} (percent|%|)
+(raise|increase|lower|drop) volume ( (on|in|at) (the|) {zone_or_output} | ) to {percent} (percent|%|)
+(set|turn) volume ( (on|in|at) (the|) {zone_or_output} | ) to {percent} (percent|%|)
 
 {zone_or_output} volume to {percent} (percent|%|)
-(raise|increase|lower|drop) {zone_or_output} volume to {percent} (percent|%|)
-(set|turn) {zone_or_output} volume to {percent} (percent|%|)
+(raise|increase|lower|drop) (the|) {zone_or_output} volume to {percent} (percent|%|)
+(set|turn) (the|) {zone_or_output} volume to {percent} (percent|%|)
