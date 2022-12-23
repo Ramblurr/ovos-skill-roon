@@ -1,0 +1,5 @@
+[flake8]
+# it's not a bug that we aren't using all of hacking
+extend-ignore =
+  # line too long
+  E501

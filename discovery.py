@@ -1,19 +1,24 @@
+"""Module for discovering and authenticating with a Roon Core"""
 import asyncio
+from logging import Logger
 from roonapi import RoonApi, RoonDiscovery
 
 from .const import AUTHENTICATE_TIMEOUT, ROON_APPINFO
+from .roon_types import RoonAuthSettings
 
 
 DISCOVER_TIMEOUT = 120
 
 
-async def sleep(s):
-    await asyncio.sleep(s)
+async def sleep(seconds: int):
+    await asyncio.sleep(seconds)
 
 
 class RoonHub:
-    def __init__(self, loop, log):
-        # our async context
+    loop: asyncio.AbstractEventLoop
+    log: Logger
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, log: Logger):
         self.loop = loop
         self.log = log
 
@@ -77,7 +82,7 @@ def discover(log, loop):
     return task.result()
 
 
-def authenticate(log, loop, host, port, servers):
+def authenticate(log, loop, host, port, servers) -> RoonAuthSettings:
     """Connect and authenticate mycroft to the roon core"""
     roon = RoonHub(loop, log)
     task = loop.create_task(roon.authenticate(host, port, servers))

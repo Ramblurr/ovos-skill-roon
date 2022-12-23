@@ -1,0 +1,9 @@
+[MESSAGES CONTROL]
+disable=too-many-public-methods,
+  unused-private-member,
+  missing-class-docstring,
+  missing-function-docstring,
+  too-many-public-methods,
+  too-many-branches,
+  line-too-long,
+  too-many-instance-attributes
