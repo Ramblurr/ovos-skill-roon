@@ -1,6 +1,23 @@
+# roon-skill
+# Copyright (C) 2022 Casey Link
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """Search helpers."""
 
 from logging import Logger
+import requests
+import base64
 import datetime
 import re
 from typing import Any, Dict, List, Optional, Tuple, TypedDict, Union, cast
@@ -576,8 +593,20 @@ class RoonCore:
         """Update a zone."""
         self.zones[zone_id] = self.roon.zones.get(zone_id)
         # from pprint import pformat
+
         # self.log.info("zone: %s", pformat(self.zones[zone_id], indent=2))
 
     def update_output(self, output_id: str) -> None:
         """Update a output."""
         self.outputs[output_id] = self.roon.outputs.get(output_id)
+
+    def now_playing_for(self, zone_id: str):
+        zone = self.roon.zones.get(zone_id)
+        if zone is None:
+            return None
+        np = zone.get("now_playing")
+        np["seek_position"] = zone["seek_position"]
+        return np
+
+    def get_image(self, image_key: str) -> Optional[str]:
+        return self.roon.get_image(image_key)

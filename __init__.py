@@ -1,14 +1,42 @@
+# roon-skill
+# Copyright (C) 2022 Casey Link
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # pylint: disable=invalid-name
 """Roon Skill."""
 import asyncio
 import os
 import re
-from typing import Any, Dict, List, Optional, Pattern, Tuple, Union, TypedDict, cast
+import random
+import datetime
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Pattern,
+    Tuple,
+    Union,
+    TypedDict,
+    cast,
+    Set,
+)
 
 
 from adapt.intent import IntentBuilder
 from mycroft.skills.common_play_skill import CommonPlaySkill, CPSMatchLevel
-from mycroft.skills.core import intent_handler
+from mycroft.skills.core import intent_handler, resting_screen_handler
 from mycroft.util.parse import extract_number
 
 from .roon_types import (
@@ -38,6 +66,22 @@ from .discovery import InvalidAuth, authenticate
 from .roon import RoonCore
 from .util import match_one
 
+STATUS_KEYS = [
+    "line1",
+    "line2",
+    "currentPosition",
+    "progressValue",
+    "albumCoverUrl",
+    "duration",
+    "artistImageUrl",
+    "hasProgress"
+    "hasAlbumCover"
+    "hasArtistBlurredImage"
+    "artistBlurredImageDim"
+    "hasArtistImage"
+    "artistBlurredImageUrl",
+]
+
 
 class RoonSkillSettings(TypedDict):
     __mycroft_skill_firstrun: bool
@@ -59,6 +103,10 @@ class RoonSkill(CommonPlaySkill):
     roon: Optional[RoonCore]
     loop: Optional[asyncio.AbstractEventLoop]
     regexes: List[Pattern]
+    watched_zone_id: Optional[str]
+    watched_artist_image_last_changed_at: Optional[datetime.datetime]
+    watched_artist_image_keys: Optional[Set[str]]
+    watched_artist_image_change_after_seconds: Optional[int]
 
     def __init__(self):
         """Init class."""
@@ -70,6 +118,11 @@ class RoonSkill(CommonPlaySkill):
         self.roon = None
         self.loop = None
         self.regexes = {}
+        self.watched_zone_id = None
+        self.watched_artist_image_keys = None
+        self.watched_artist_image_last_changed_at = None
+        self.watched_artist_image_current = None
+        self.watched_artist_image_change_after_seconds = None
 
     def get_settings(self) -> RoonSkillSettings:
         return cast(RoonSkillSettings, self.settings)
@@ -122,6 +175,7 @@ class RoonSkill(CommonPlaySkill):
             self.on_websettings_changed, None, 5 * 60, name="RoonLogin"
         )
         self.on_websettings_changed()
+        self.schedule_event(self.show_player, 2)
 
     def shutdown(self):
         """Shutdown skill."""
@@ -156,6 +210,7 @@ class RoonSkill(CommonPlaySkill):
         self.update_library_cache()
         self.update_entities()
         self.roon.roon.register_state_callback(self.handle_roon_state_change)
+        self.register_resting_screen()
 
     def handle_roon_state_change(
         self, event: RoonSubscriptionEvent, output_or_zone_ids: List[str]
@@ -168,6 +223,8 @@ class RoonSkill(CommonPlaySkill):
                 if zone_id not in self.roon.zones:
                     should_update_entities = True
                 self.roon.update_zone(zone_id)
+                if self.watched_zone_id == zone_id:
+                    self.update_watched_zone()
         elif event in [EVENT_OUTPUT_CHANGED]:
             for output_id in output_or_zone_ids:
                 if output_id not in self.roon.outputs:
@@ -731,17 +788,12 @@ class RoonSkill(CommonPlaySkill):
     @intent_handler("WhatIsPlaying.intent")
     def handle_what_is_playing(self, message):
         zone_id = self.get_target_zone_or_output(message)
-        zone = self.roon.zones.get(zone_id)
-        # from pprint import pformat
-        # self.log.info("zone: %s", pformat(self.roon.zones, indent=2))
-        if not zone:
+        now_playing = self.roon.now_playing_for(zone_id)
+        if not now_playing:
+            self.log.info("no now playing for %s", zone_id)
             self.speak_dialog("ZoneUnavailable")
             return
-        now_playing = zone.get("now_playing")
         self.log.info("what is playing in %s? %s", self.zone_name(zone_id), now_playing)
-        if not now_playing:
-            self.speak_dialog("NothingIsPlaying")
-            return
         line1 = now_playing.get("two_line").get("line1")
         line2 = now_playing.get("two_line").get("line2")
 
@@ -749,6 +801,7 @@ class RoonSkill(CommonPlaySkill):
             self.speak_dialog("WhatIsPlayingReply-2", {"line1": line1, "line2": line2})
         elif len(line1) > 0:
             self.speak_dialog("WhatIsPlayingReply", {"line1": line1})
+        self.show_player(zone_id)
 
     def get_target_zone(self, message: Union[str, Dict[str, Any]]) -> Optional[str]:
         """Get the target zone id from a user's query."""
@@ -827,6 +880,136 @@ class RoonSkill(CommonPlaySkill):
         if isinstance(roon_response, dict):
             return "is_error" not in roon_response
         return True
+
+    def format_duration(self, seconds: int) -> str:
+        if seconds is None:
+            return ""
+        minutes = seconds // 60
+        hours = minutes // 60
+        if hours == 0:
+            return "%02d:%02d" % (minutes, seconds % 60)
+        else:
+            return "%02d:%02d:%02d" % (hours, minutes % 60, seconds % 60)
+
+    def show_player(self, zone_id: str) -> None:
+        if not self.gui.connected:
+            return
+
+        self.gui.clear()
+        self.clear_gui_info()
+        self.set_watched_zone(zone_id)
+        if self.update_watched_zone():
+            self.gui.show_page("AudioPlayer.qml", override_idle=True)
+
+    def set_watched_zone(self, zone_id: str) -> None:
+        self.clear_watched_zone()
+        self.watched_zone_id = zone_id
+
+    def clear_watched_zone(self) -> None:
+        self.watched_zone_id = None
+        self.watched_artist_image_keys = None
+        self.watched_artist_image_last_changed_at = None
+        self.watched_artist_image_current = None
+        self.watched_artist_image_change_after_seconds = None
+
+    def update_watched_zone(self) -> bool:
+        now_playing = self.roon.now_playing_for(self.watched_zone_id)
+        # self.log.info("showing player %s", now_playing)
+        if now_playing is None:
+            return False
+        self.gui["line1"] = now_playing["two_line"]["line1"]
+        self.gui["line2"] = now_playing["two_line"]["line2"]
+        current_pos_seconds = now_playing["seek_position"]
+        duration_seconds = now_playing.get("length")
+        if current_pos_seconds and duration_seconds:
+            self.gui["currentPosition"] = self.format_duration(current_pos_seconds)
+            self.gui["duration"] = self.format_duration(duration_seconds)
+            self.gui["progressValue"] = current_pos_seconds / duration_seconds
+            self.gui["hasProgress"] = True
+        else:
+            self.gui["hasProgress"] = False
+
+        album_cover_image_key = now_playing.get("image_key")
+        if album_cover_image_key:
+            self.gui["albumCoverUrl"] = self.roon.get_image(album_cover_image_key)
+            self.gui["hasAlbumCover"] = True
+        else:
+            self.gui["hasAlbumCover"] = False
+        if len(now_playing.get("artist_image_keys", [])) > 0:
+            artist_image_key = None
+            if (
+                self.watched_artist_image_keys is None
+                or self.watched_artist_image_keys
+                != set(now_playing["artist_image_keys"])
+            ):
+                self.watched_artist_image_keys = set(now_playing["artist_image_keys"])
+                artist_image_key = random.choice(list(self.watched_artist_image_keys))
+            elif (
+                self.watched_artist_image_keys
+                and self.watched_artist_image_last_changed_at
+            ):
+                delta = (
+                    datetime.datetime.now() - self.watched_artist_image_last_changed_at
+                )
+                if (
+                    delta.total_seconds()
+                    > self.watched_artist_image_change_after_seconds
+                ):
+                    if (
+                        self.watched_artist_image_current
+                        in self.watched_artist_image_keys
+                        and len(self.watched_artist_image_keys) > 1
+                    ):
+                        copy = self.watched_artist_image_keys.copy()
+                        copy.remove(self.watched_artist_image_current)
+                        artist_image_key = random.choice(list(copy))
+
+            if artist_image_key:
+                self.gui["hasArtistImage"] = True
+                self.gui["hasArtistBlurredImage"] = True
+                self.gui["artistImageUrl"] = self.roon.get_image(artist_image_key)
+                self.gui["artistBlurredImageUrl"] = self.roon.get_image(
+                    artist_image_key
+                )
+                self.gui["artistBlurredImageDim"] = False
+                self.watched_artist_image_current = artist_image_key
+                self.watched_artist_image_last_changed_at = datetime.datetime.now()
+                self.watched_artist_image_change_after_seconds = random.randint(60, 120)
+        else:
+            self.gui["hasArtistImage"] = False
+            if album_cover_image_key:
+                self.gui["artistBlurredImageUrl"] = self.roon.get_image(
+                    album_cover_image_key
+                )
+                self.gui["hasArtistBlurredImage"] = True
+                self.gui["artistBlurredImageDim"] = True
+            else:
+                self.gui["hasArtistBlurredImage"] = False
+        return True
+
+    def get_display_url(self) -> Optional[str]:
+        if self.roon_not_connected():
+            self.log.info("not connected")
+            return None
+        auth = self.get_auth()
+        if not auth:
+            self.log.info("no auth")
+            return None
+        host = auth.get("host")
+        return "http://{}:{}/display/".format(host, 9330)
+
+    def clear_gui_info(self):
+        """Clear the gui variable list."""
+        for k in STATUS_KEYS:
+            self.gui[k] = ""
+
+    @resting_screen_handler("RoonNowPlaying")
+    def handle_idle(self, message: str) -> None:
+        # pylint: disable=unused-argument
+        url = self.get_display_url()
+        if url:
+            self.gui.clear()
+            self.gui.show_url(url)
 
 
 def create_skill():
