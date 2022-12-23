@@ -571,3 +571,13 @@ class RoonCore:
     def disconnect(self) -> None:
         """Disconnect from Roon."""
         self.roon.stop()
+
+    def update_zone(self, zone_id: str) -> None:
+        """Update a zone."""
+        self.zones[zone_id] = self.roon.zones.get(zone_id)
+        # from pprint import pformat
+        # self.log.info("zone: %s", pformat(self.zones[zone_id], indent=2))
+
+    def update_output(self, output_id: str) -> None:
+        """Update a output."""
+        self.outputs[output_id] = self.roon.outputs.get(output_id)

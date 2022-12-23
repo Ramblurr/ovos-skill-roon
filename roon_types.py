@@ -14,6 +14,14 @@ HierarchyTypes = Literal[
     "search",
 ]
 
+EVENT_ZONE_CHANGED = "zones_changed"
+EVENT_ZONE_SEEK_CHANGED = "zones_seek_changed"
+EVENT_OUTPUT_CHANGED = "outputs_changed"
+
+RoonSubscriptionEvent = Literal[
+    "zones_changed", "zones_seek_changed", "outputs_changed"
+]
+
 BrowseItemHint = Literal["action", "action_list", "list", "header"]
 BrowseListHint = Literal["action_list"]
 

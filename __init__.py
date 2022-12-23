@@ -12,10 +12,14 @@ from mycroft.skills.core import intent_handler
 from mycroft.util.parse import extract_number
 
 from .roon_types import (
+    RoonSubscriptionEvent,
     RoonAuthSettings,
     RoonApiErrorResponse,
     RoonApiBrowseLoadResponse,
     RoonApiBrowseResponse,
+    EVENT_ZONE_CHANGED,
+    EVENT_ZONE_SEEK_CHANGED,
+    EVENT_OUTPUT_CHANGED,
 )
 from .const import (
     CONF_DEFAULT_ZONE_ID,
@@ -121,9 +125,9 @@ class RoonSkill(CommonPlaySkill):
 
     def shutdown(self):
         """Shutdown skill."""
-        self.cancel_scheduled_event("RoonLogin")
         if self.roon:
             self.roon.disconnect()
+        self.cancel_scheduled_event("RoonLogin")
 
     def on_websettings_changed(self):
         """Handle websettings change."""
@@ -141,12 +145,36 @@ class RoonSkill(CommonPlaySkill):
             # self.refresh_saved_tracks()
 
         elif auth:
-            self.log.info("roon auth %s", auth)
-            self.roon = RoonCore(self.log, auth)
-            self.schedule_repeating_event(
-                self.update_library_cache, None, 5 * 60, name="RoonCoreCache"
-            )
-            self.update_library_cache()
+            self.connect_to_roon(auth)
+
+    def connect_to_roon(self, auth: RoonAuthSettings) -> None:
+        self.log.info("roon auth %s", auth)
+        self.roon = RoonCore(self.log, auth)
+        self.schedule_repeating_event(
+            self.update_library_cache, None, 5 * 60, name="RoonCoreCache"
+        )
+        self.update_library_cache()
+        self.update_entities()
+        self.roon.roon.register_state_callback(self.handle_roon_state_change)
+
+    def handle_roon_state_change(
+        self, event: RoonSubscriptionEvent, output_or_zone_ids: List[str]
+    ):
+        # Warning this log line is very very noisy, only use in development
+        # self.log.info("event %s in %s", event, output_or_zone_ids)
+        should_update_entities = False
+        if event in [EVENT_ZONE_CHANGED, EVENT_ZONE_SEEK_CHANGED]:
+            for zone_id in output_or_zone_ids:
+                if zone_id not in self.roon.zones:
+                    should_update_entities = True
+                self.roon.update_zone(zone_id)
+        elif event in [EVENT_OUTPUT_CHANGED]:
+            for output_id in output_or_zone_ids:
+                if output_id not in self.roon.outputs:
+                    should_update_entities = True
+                self.roon.update_output(output_id)
+
+        if should_update_entities:
             self.update_entities()
 
     def update_library_cache(self):
@@ -693,12 +721,34 @@ class RoonSkill(CommonPlaySkill):
             self.acknowledge()
 
     @intent_handler("RepeatOff.intent")
-    def handle_repeat_off(self):
+    def handle_repeat_off(self, message):
         """Turn repeat off."""
-        default_zone_id = self.get_default_zone_id()
-        r = self.roon.repeat(default_zone_id, "disabled")
+        zone_id = self.get_target_zone_or_output(message)
+        r = self.roon.repeat(zone_id, "disabled")
         if self.is_success(r):
             self.acknowledge()
+
+    @intent_handler("WhatIsPlaying.intent")
+    def handle_what_is_playing(self, message):
+        zone_id = self.get_target_zone_or_output(message)
+        zone = self.roon.zones.get(zone_id)
+        # from pprint import pformat
+        # self.log.info("zone: %s", pformat(self.roon.zones, indent=2))
+        if not zone:
+            self.speak_dialog("ZoneUnavailable")
+            return
+        now_playing = zone.get("now_playing")
+        self.log.info("what is playing in %s? %s", self.zone_name(zone_id), now_playing)
+        if not now_playing:
+            self.speak_dialog("NothingIsPlaying")
+            return
+        line1 = now_playing.get("two_line").get("line1")
+        line2 = now_playing.get("two_line").get("line2")
+
+        if len(line1) > 0 and len(line2) > 0:
+            self.speak_dialog("WhatIsPlayingReply-2", {"line1": line1, "line2": line2})
+        elif len(line1) > 0:
+            self.speak_dialog("WhatIsPlayingReply", {"line1": line1})
 
     def get_target_zone(self, message: Union[str, Dict[str, Any]]) -> Optional[str]:
         """Get the target zone id from a user's query."""
