@@ -160,7 +160,7 @@ class RoonSkill(CommonPlaySkill):
             asyncio.set_event_loop(self.loop)
         else:
             self.loop = asyncio.get_running_loop()
-        self.cancel_scheduled_event("RoonLogin")
+        self.cancel_scheduled_event("RoonSettingsUpdate")
         # Setup handlers for playback control messages
         self.add_event("mycroft.audio.service.next", self.handle_next)
         self.add_event("mycroft.audio.service.prev", self.handle_prev)
@@ -169,37 +169,42 @@ class RoonSkill(CommonPlaySkill):
         self.add_event("mycroft.audio.service.stop", self.handle_stop)
         self.add_event("mycroft.stop", self.handle_stop)
 
-        self.settings_change_callback = self.on_websettings_changed
-        # Retry in 5 minutes
-        self.schedule_repeating_event(
-            self.on_websettings_changed, None, 5 * 60, name="RoonLogin"
-        )
-        self.on_websettings_changed()
-        self.schedule_event(self.show_player, 2)
+        self.settings_change_callback = self.handle_settings_change
+        if not self.get_auth():
+            # if we aren't authorized yet, then update our settings every 3 seconds
+            # this is so that if the user authorizes the extension we can react timely
+            update_settings_interval = 3
+            self.schedule_repeating_event(
+                self.handle_settings_change,
+                None,
+                update_settings_interval,
+                name="RoonSettingsUpdate",
+            )
+
+        self.handle_settings_change()
 
     def shutdown(self):
         """Shutdown skill."""
         if self.roon:
             self.roon.disconnect()
-        self.cancel_scheduled_event("RoonLogin")
+        self.cancel_scheduled_event("RoonSettingsUpdate")
+        self.cancel_scheduled_event("RoonCoreCache")
 
-    def on_websettings_changed(self):
+    def handle_settings_change(self):
         """Handle websettings change."""
         auth = self.get_auth()
         if self.roon:
-            self.cancel_scheduled_event("RoonLogin")
+            # we are connected!
+            self.cancel_scheduled_event("RoonSettingsUpdate")
             self.schedule_repeating_event(
                 self.update_library_cache, None, 5 * 60, name="RoonCoreCache"
             )
-
-            # Refresh saved tracks
-            # We can't get this list when the user asks because it takes
-            # too long and causes
-            # mycroft-playback-control.mycroftai:PlayQueryTimeout
-            # self.refresh_saved_tracks()
-
         elif auth:
+            # we have authorization but are not connected
             self.connect_to_roon(auth)
+        elif self.is_auth_waiting():
+            # we lack authorization
+            self.configure_manually(headless=True)
 
     def connect_to_roon(self, auth: RoonAuthSettings) -> None:
         self.log.info("roon auth %s", auth)
@@ -211,6 +216,63 @@ class RoonSkill(CommonPlaySkill):
         self.update_entities()
         self.roon.roon.register_state_callback(self.handle_roon_state_change)
         self.register_resting_screen()
+
+    @intent_handler("ConfigureRoon.intent")
+    def handle_configure_roon(self, message: str):
+        # pylint: disable=unused-argument
+        """Handle configure command."""
+        if self.roon or self.get_auth():
+            self.speak_dialog("AlreadyConfigured")
+            self.set_auth_waiting(False)
+            return
+        if self.is_auth_waiting():
+            self.speak_dialog("AuthorizationWaiting")
+            return
+
+        if False:
+            # TODO auto discover
+            pass
+        else:
+            self.configure_manually(headless=False)
+
+    def configure_manually(self, headless=True):
+        self.log.info("configure_manually headless=%s", headless)
+        host = self.settings.get("host").strip()
+        port = self.settings.get("port")
+        if not host or not port or host == "" or port == 0:
+            if not headless:
+                self.speak_dialog("InvalidRoonConfig")
+            return
+        try:
+            if not headless:
+                self.speak_dialog("AuthorizationManualStarting")
+            r = authenticate(self.log, self.loop, host, port, None)
+            self.set_auth(r)
+            self.log.info("Roon token saved locally: %s", r.get("token"))
+            self.speak_dialog("AuthorizationManualSuccess")
+        except InvalidAuth:
+            self.set_auth_waiting(True)
+            if not headless:
+                self.speak_dialog("AuthorizationWaiting")
+
+    # @intent_handler("RoonStatus.intent")
+    def handle_roon_status(self, message: str):
+        # pylint: disable=unused-argument
+        """Handle roon status command."""
+        if self.is_auth_waiting():
+            self.speak_dialog("AuthorizationWaiting")
+        elif self.get_auth() and self.get_auth().get("roon_server_name"):
+            auth = self.get_auth()
+            self.speak_dialog(
+                "RoonStatus",
+                {
+                    "name": auth.get("roon_server_name"),
+                    "host": auth.get("host"),
+                    "port": auth.get("port"),
+                },
+            )
+        else:
+            self.speak_dialog("RoonNotConfigured")
 
     def handle_roon_state_change(
         self, event: RoonSubscriptionEvent, output_or_zone_ids: List[str]
@@ -460,55 +522,6 @@ class RoonSkill(CommonPlaySkill):
     def playback_prerequisites_ok(self):
         """Check if the playback prereqs are met."""
         return not self.roon_not_connected()
-
-    @intent_handler("ConfigureRoon.intent")
-    def handle_configure_roon(self, message):
-        # pylint: disable=unused-argument
-        """Handle configure command."""
-        if self.roon or self.get_auth():
-            self.speak_dialog("AlreadyConfigured")
-            self.set_auth_waiting(False)
-            return
-        if self.is_auth_waiting():
-            self.speak_dialog("AuthorizationWaiting")
-            self.speak_dialog("AuthorizationRequired")
-            return
-        host = self.settings.get("host")
-        port = self.settings.get("port")
-        if not host and not port:
-            self.speak_dialog("InvalidRoonConfig")
-            return
-        try:
-            self.speak_dialog("AuthorizationRequired")
-            self.set_auth_waiting(True)
-            r = authenticate(self.log, self.loop, host, port, None)
-            self.set_auth_waiting(False)
-            self.set_auth(r)
-            self.log.info("Roon token saved locally: %s", r.get("token"))
-        except InvalidAuth:
-            self.speak_dialog("AuthorizationFailed")
-        finally:
-            self.set_auth_waiting(False)
-
-    @intent_handler("RoonStatus.intent")
-    def handle_roon_status(self, message):
-        # pylint: disable=unused-argument
-        """Handle roon status command."""
-        if self.is_auth_waiting():
-            self.speak_dialog("AuthorizationWaiting")
-            self.speak_dialog("AuthorizationRequired")
-        elif self.get_auth() and self.get_auth().get("roon_server_name"):
-            auth = self.get_auth()
-            self.speak_dialog(
-                "RoonStatus",
-                {
-                    "name": auth.get("roon_server_name"),
-                    "host": auth.get("host"),
-                    "port": auth.get("port"),
-                },
-            )
-        else:
-            self.speak_dialog("RoonNotConfigured")
 
     @intent_handler(
         IntentBuilder("GetDefaultZone")

@@ -24,7 +24,7 @@ ROON_APPINFO = {
     "extension_id": "mycroft_roon",
     "display_name": "Roon Skill for Mycroft",
     "display_version": "0.0.1",
-    "publisher": "ramblurr",
+    "publisher": "Casey Link",
     "email": "ramblurr@users.noreply.github.com",
     "website": "https://github.com/ramblurr/mycroft-roon-skill",
 }
