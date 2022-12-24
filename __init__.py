@@ -622,10 +622,11 @@ class RoonSkill(CommonPlaySkill):
         self.gui.show_text(zone["display_name"], title="Default Zone")
         self.release_gui_after()
 
-    def roon_not_connected(self):
+    def roon_not_connected(self, speak_error=False):
         """Check if the skill is not connected to Roon."""
         if not self.roon:
-            self.speak_dialog("RoonNotConfigured")
+            if speak_error:
+                self.speak_dialog("RoonNotConfigured")
             return True
         return False
 
