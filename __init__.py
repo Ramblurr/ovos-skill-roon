@@ -137,7 +137,7 @@ class RoonSkill(CommonPlaySkill):
         self.settings["auth_waiting"] = waiting
 
     def is_auth_waiting(self) -> bool:
-        return self.settings["auth_waiting"] is True
+        return self.settings.get("auth_waiting", False) is True
 
     def get_default_zone_id(self) -> Optional[str]:
         return self.settings.get(CONF_DEFAULT_ZONE_ID)
