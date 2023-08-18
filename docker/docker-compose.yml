@@ -1,0 +1,69 @@
+---
+version: "3.9"
+x-podman: &podman
+  userns_mode: keep-id
+  security_opt:
+    - "label=disable"
+x-logging: &default-logging
+  driver: json-file
+  options:
+    mode: non-blocking
+    max-buffer-size: 4m
+    max-size: "200m"
+    max-file: "1"
+services:
+  ramblurr_roon_proxy_server:
+    <<: *podman
+    container_name: ramblurr_roon_proxy_server
+    hostname: ramblurr_roon_proxy_server
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["server"]
+    #image: localhost/skill-roon:dev
+    #image: ghcr.io/ramblurr/skill-roon:${VERSION}
+    #pull_policy: always
+    network_mode: host
+    #ipc: host
+    volumes:
+      - ${CONFIG_FOLDER}:/home/${OVOS_USER}/.config/mycroft
+      - ${TMP_FOLDER}:/tmp/mycroft
+      - ~/src/mycroft/roon-skill:/mycroft_roon_skill
+    logging: *default-logging
+    environment:
+      TZ: $TZ
+  ramblurr_skill_roon:
+    <<: *podman
+    container_name: ramblurr_skill_roon
+    hostname: ramblurr_skill_roon
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["skill"]
+    #image: localhost/skill-roon:dev
+    #image: ghcr.io/ramblurr/skill-roon:${VERSION}
+    #pull_policy: always
+    network_mode: host
+    #ipc: host
+    volumes:
+      - ${CONFIG_FOLDER}:/home/${OVOS_USER}/.config/mycroft
+      - ${TMP_FOLDER}:/tmp/mycroft
+      - ~/src/mycroft/roon-skill:/mycroft_roon_skill
+    logging: *default-logging
+    environment:
+      TZ: $TZ
+  # smartgic_skill_sonos_controller:
+  #   <<: *podman
+  #   container_name: smartgic_skill_sonos_controller
+  #   hostname: smartgic_skill_sonos_controller
+  #   restart: unless-stopped
+  #   image: docker.io/smartgic/smartgic-skill-sonos-controller:alpha
+  #   #pull_policy: always
+  #   network_mode: host
+  #   #ipc: host
+  #   volumes:
+  #     - ${CONFIG_FOLDER}:/home/${OVOS_USER}/.config/mycroft:Z
+  #     - ${TMP_FOLDER}:/tmp/mycroft:Z
+  #   logging: *default-logging
