@@ -440,6 +440,8 @@ class RoonSkill(OVOSSkill):
         if self.pairing_status == PairingStatus.NOT_STARTED:
             if self.start_pairing():
                 self.speak_dialog("PairingInProgress")
+            else:
+                self.speak_dialog("InvalidRoonConfig")
 
     @intent_handler("RoonStatus.intent")
     def handle_roon_status(self, message: Message):
