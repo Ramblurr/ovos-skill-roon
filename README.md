@@ -52,7 +52,7 @@ msm install https://github.com/Ramblurr/mycroft-roon-skill.git
 
 ## Setup
 
-⚠️ Your Roon Core must be on the same network as your Mycroft device. ⚠️
+⚠️ Your Roon Core must be on the same network as your Mycroft device. If your Mycroft device and Roon Core are on different vlans, you will need to configure the host and port manually. ⚠️
 
 ### Discovery
 

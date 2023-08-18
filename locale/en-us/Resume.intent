@@ -1,2 +1,0 @@
-(unpause|play( resume|)|resume( playing|)|continue playing) ( the | ) (roon|music) ( (on|in|at) (the|) {zone_or_output} | )
-(unpause|play( resume|)|resume( playing|)|continue playing) (roon|music|) (on|in|at|) (the|) {zone_or_output}

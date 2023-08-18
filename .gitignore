@@ -1,4 +1,5 @@
 __pycache__/
+dist/
 *.qmlc
 settings.json
 flycheck_*.py
@@ -6,3 +7,9 @@ locale/*/output_name.entity
 locale/*/zone_name.entity
 locale/*/zone_or_output.entity
 ui/images
+.env
+.envrc
+.direnv
+*.egg-info
+/*.log
+/*.sock
