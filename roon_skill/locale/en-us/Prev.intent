@@ -1,1 +1,3 @@
-(previous|go back( one| )|) (song|track|music|) ( (on|in|at|) (the|) {zone_or_output} | )
+previous ((on|in|at|) (the|) {zone_or_output} | )
+previous (song|track|music) ((on|in|at|) (the|) {zone_or_output} | )
+play previous (song|track|music) ((on|in|at|) (the|) {zone_or_output} | )

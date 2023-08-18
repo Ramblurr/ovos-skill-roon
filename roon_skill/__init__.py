@@ -151,6 +151,7 @@ class RoonSkill(OVOSSkill):
         return self.get_settings().get("auth")
 
     def set_auth(self, auth: RoonAuthSettings):
+        self.log.info("set_auth {auth}")
         self.settings["auth"] = auth
 
     def initialize(self):
@@ -191,6 +192,9 @@ class RoonSkill(OVOSSkill):
         Returns true if pairing was started
         """
         auth = self.get_auth()
+        settings = self.get_settings()
+        settings_host = settings.get("host")
+        settings_port = settings.get("port")
         auth_opts = auth_settings_valid(auth)
         pairing_started = False
         if auth_opts:
@@ -199,13 +203,15 @@ class RoonSkill(OVOSSkill):
             self.log.info("Starting roon pairing with saved settings")
             self.roon_proxy.pair(auth_opts)
             pairing_started = True
-        elif auth is not None and auth.get("host") and auth.get("port"):
+        elif settings_host and settings_port:
             # user has manually entered the host and port, so we can attempt to pair
             # but this will require authorization from the user in the Roon app
             pairing_started = True
-            self.log.info("Starting roon pairing host and port")
+            self.log.info(
+                f"Starting roon pairing host={settings_host} and port={settings_port}"
+            )
             self.roon_proxy.pair(
-                RoonManualPairSettings(host=auth.get("host"), port=auth.get("port"))
+                RoonManualPairSettings(host=settings_host, port=settings_port)
             )
         if pairing_started:
             # start checking the pair status in the background
@@ -218,10 +224,12 @@ class RoonSkill(OVOSSkill):
                 name="RoonPairing",
             )
             self.log.info("Roon pairing started")
+            self.update_pair_status()
             return True
         return False
 
     def handle_paired(self):
+        self.log.info(f"handle_paired {self.paired} {self.pairing_status}")
         if self.paired:
             # we want to reguraly check to see if we paired
             # but not so often now that we paired once
@@ -236,11 +244,22 @@ class RoonSkill(OVOSSkill):
             self.schedule_cache_update()
 
     def update_pair_status(self):
+        prev_status = self.pairing_status
         status = self.roon_proxy.pair_status()
         self.pairing_status = status.status
         if status.status == PairingStatus.PAIRED:
             self.paired = True
             self.handle_paired()
+            if status.auth:
+                self.set_auth(
+                    {
+                        "host": status.auth.host,
+                        "port": status.auth.port,
+                        "token": status.auth.token,
+                        "core_id": status.auth.core_id,
+                        "core_name": status.auth.core_name,
+                    }
+                )
         elif status.status == PairingStatus.FAILED:
             self.paired = False
         elif status.status == PairingStatus.IN_PROGRESS:
@@ -249,6 +268,8 @@ class RoonSkill(OVOSSkill):
             self.paired = False
         elif status.status == PairingStatus.WAITING_FOR_AUTHORIZATION:
             self.paired = False
+            if prev_status == PairingStatus.IN_PROGRESS:
+                self.speak_dialog("AuthorizationWaiting")
         else:
             self.paired = False
             raise Exception(f"Unhandled pairing status {status.status}")
@@ -410,6 +431,16 @@ class RoonSkill(OVOSSkill):
             return True
         return False
 
+    @intent_handler("ConfigureRoon.intent")
+    def handle_configure_roon(self, message: Message):
+        settings = self.get_settings()
+        auth = self.get_auth()
+        if self.paired and auth:
+            self.handle_roon_status(message)
+        if self.pairing_status == PairingStatus.NOT_STARTED:
+            if self.start_pairing():
+                self.speak_dialog("PairingInProgress")
+
     @intent_handler("RoonStatus.intent")
     def handle_roon_status(self, message: Message):
         # pylint: disable=unused-argument
@@ -459,7 +490,7 @@ class RoonSkill(OVOSSkill):
     def list_zones(self, message: Message):
         # pylint: disable=unused-argument
         """List available zones."""
-        self.log("list zones")
+        self.log.info("list zones")
         if self.roon_not_connected():
             return
         zones = self.cache.zones

@@ -1,1 +1,4 @@
 (skip|next) (song|track|music|) ( (on|in|at|) (the|) {zone_or_output} | )
+(skip|next) ((on|in|at|) (the|) {zone_or_output} | )
+(skip|next) (song|track|music) ((on|in|at|) (the|) {zone_or_output} | )
+play next (song|track|music) ((on|in|at|) (the|) {zone_or_output} | )
