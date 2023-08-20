@@ -12,6 +12,7 @@
        packages = [
     pkgs.python311
     pkgs.poetry
+    pkgs.watchexec
   ];
 
   # Workaround in linux: python downloads ELF's that can't find glibc

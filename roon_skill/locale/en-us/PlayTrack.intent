@@ -1,2 +1,0 @@
-play {track} (on | in | at) (the|) {zone_or_output}
-play {track} by {artist} (on | in | at) (the|) {zone_or_output}

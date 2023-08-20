@@ -15,12 +15,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import datetime
 import logging
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from roonapi import RoonApi
 
-from .const import LIBRARY_CACHE_UPDATE_MIN_INTERVAL_MINUTES
-from .roon_api_browse import roon_play_search_result
+from .const import (
+    LIBRARY_CACHE_UPDATE_MIN_INTERVAL_MINUTES,
+    ItemType,
+    EnrichedBrowseItem,
+)
+from .roon_api_browse import roon_play_search_result, roon_search_type
 from .roon_cache import roon_cache_update, empty_roon_cache
 from .roon_types import (
     PlaybackControlOption,
@@ -28,7 +32,7 @@ from .roon_types import (
     RoonAuthSettings,
     ServiceTransportResponse,
 )
-from .schema import PlayPath, PlaySearch, RoonCacheData
+from .schema import PlayPath, PlaySearch, RoonCacheData, SearchAndPlay, SearchTypeResult
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -128,3 +132,12 @@ class RoonCore:
             roon_play_search_result(
                 self.roon, play.zone_or_output_id, play.item_key, play.session_key
             )
+
+    def play_type(self, cmd: SearchAndPlay) -> None:
+        pass
+
+    def search_type(self, item_type: ItemType, query: str) -> SearchTypeResult:
+        results: List[EnrichedBrowseItem] = roon_search_type(
+            self.roon, self.cache, item_type, query
+        )
+        return SearchTypeResult(results=results)

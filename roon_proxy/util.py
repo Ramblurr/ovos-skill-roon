@@ -28,7 +28,7 @@ from typing import (
 )
 from fuzzywuzzy import fuzz, process as fuzz_process
 from fuzzywuzzy import utils
-from roon_proxy.roon_types import BrowseItem
+from .roon_types import BrowseItem
 
 
 T = TypeVar("T")
@@ -103,7 +103,7 @@ def match_one_item(query: str, items: List[BrowseItem]) -> ConfidenceItemFloat:
     return BrowseItem(**item_dict), confidence
 
 
-def best_match(opt1, opt2):
+def best_match(opt1: ConfidenceFloat, opt2: ConfidenceFloat):
     if opt1[1] > opt2[1]:
         return opt1
     return opt2
