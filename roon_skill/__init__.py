@@ -15,24 +15,23 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # pylint: disable=invalid-name
 """Roon Skill."""
-
+from urllib.parse import quote, unquote
 from dataclasses import asdict
-import asyncio
+from functools import wraps
 import os
 import re
-import random
-import datetime
+import rpc.error
 from typing import (
-    Any,
+    Pattern,
     Dict,
     List,
     Optional,
     Pattern,
-    Tuple,
+    Match,
     Union,
     TypedDict,
+    List,
     cast,
-    Set,
 )
 
 
@@ -42,16 +41,18 @@ from ovos_bus_client.message import Message
 # from mycroft.skills.common_play_skill import CPSMatchLevel
 from ovos_workshop.decorators import intent_handler, resting_screen_handler
 from lingua_franca.parse import extract_number
+from ovos_plugin_common_play.ocp import MediaType, PlaybackType
+from ovos_workshop.skills.common_play import (
+    OVOSCommonPlaybackSkill,
+    ocp_search,
+    ocp_play,
+)
 
-# from ovos_workshop.skills.common_play import (
-#    OVOSCommonPlaybackSkill,
-#    MediaType,
-#    PlaybackType,
-#    ocp_search,
-#    ocp_play,
-# )
-from ovos_workshop.skills import OVOSSkill
-from roon_proxy.const import DiscoverStatus, PairingStatus
+from roon_proxy.const import (
+    DiscoverStatus,
+    PairingStatus,
+    ItemType,
+)
 from roon_proxy.roon_cache import empty_roon_cache
 
 from roon_proxy.schema import RoonCacheData, RoonManualPairSettings
@@ -78,10 +79,11 @@ from roon_proxy.const import (
     TYPE_PLAYLIST,
     TYPE_STATION,
     TYPE_TAG,
+    EnrichedBrowseItem,
 )
 
 from roon_proxy.roon_proxy_client import RoonProxyClient
-from .util import match_one
+from roon_proxy.util import match_one
 
 STATUS_KEYS = [
     "line1",
@@ -114,6 +116,23 @@ class RoonNotAuthorizedError(Exception):
     """Error for when Roon isn't authorized."""
 
 
+class OVOSAudioTrack(TypedDict):
+    uri: str  # URL/URI of media, OCP will handle formatting and file handling
+    title: str
+    media_type: MediaType
+    playback: PlaybackType
+    match_confidence: int  # 0-100
+    album: Optional[str]
+    artist: Optional[str]
+    length: Optional[int]  # milliseconds
+    image: Optional[str]
+    bg_image: Optional[str]
+    skill_icon: Optional[str]  # Optional filename for skill icon
+    skill_id: Optional[
+        str
+    ]  # Optional ID of skill to distinguish where results came from
+
+
 def auth_settings_valid(
     auth: Optional[RoonAuthSettings],
 ) -> Optional[RoonManualPairSettings]:
@@ -128,20 +147,44 @@ def auth_settings_valid(
     return None
 
 
-class RoonSkill(OVOSSkill):
+def ensure_proxy_connected(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if not self.proxy_connected:
+            # raise Exception("Not connected to Roon Proxy")
+            return
+        return method(self, *args, **kwargs)
+
+    return wrapper
+
+
+def ensure_paired(method):
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if not self.paired:
+            # raise Exception("Not connected to Roon Proxy")
+            return
+        return method(self, *args, **kwargs)
+
+    return wrapper
+
+
+class RoonSkill(OVOSCommonPlaybackSkill):
     """Control roon with your voice."""
 
     def __init__(self, *args, **kwargs):
         """Init class."""
         self.paired = False
+        self.proxy_connected = False
         self.waiting_for_authorization = False
         self.pairing_status: PairingStatus = PairingStatus.NOT_STARTED
         self.roon_proxy = RoonProxyClient(
             os.environ.get("ROON_PROXY_SOCK") or "ipc://server.sock"
         )
-        self.roon_proxy.connect()
         self.cache: RoonCacheData = empty_roon_cache()
+        self.regexes: Dict[str, Pattern] = {}
         super().__init__(*args, **kwargs)
+        self.supported_media = [MediaType.AUDIO, MediaType.MUSIC, MediaType.RADIO]
         # note: self.initialize is called in super.__init__
 
     def get_settings(self) -> RoonSkillSettings:
@@ -151,21 +194,22 @@ class RoonSkill(OVOSSkill):
         return self.get_settings().get("auth")
 
     def set_auth(self, auth: RoonAuthSettings):
-        self.log.info("set_auth {auth}")
-        self.settings["auth"] = auth
+        if self.get_auth() != auth:
+            self.settings["auth"] = auth
 
-    def initialize(self):
-        """Init skill."""
-        super().initialize()
-        self.log.info("roon init")
-        # Setup handlers for playback control messages
-        self.add_event("mycroft.audio.service.next", self.handle_next)
-        self.add_event("mycroft.audio.service.prev", self.handle_prev)
-        self.add_event("mycroft.audio.service.pause", self.handle_pause)
-        self.add_event("mycroft.audio.service.resume", self.handle_resume)
-        self.add_event("mycroft.audio.service.stop", self.handle_stop)
-        self.add_event("mycroft.stop", self.handle_stop)
+    def connect_roon_proxy(self):
+        self.proxy_connected = False
+        try:
+            self.log.info("connect_roon_proxy")
+            self.roon_proxy.connect()
+            self.proxy_connected = True
+            self.log.info("connect_roon_proxy: connected")
+            self.post_proxy_connect_init()
+        except rpc.error.TimeoutException:
+            self.log.info("connect_roon_proxy: failed to connect")
+            self.schedule_event(self.connect_roon_proxy, 2, name="RoonProxyConnect")
 
+    def post_proxy_connect_init(self):
         self.cancel_scheduled_event("RoonSettingsUpdate")
         self.settings_change_callback = self.handle_settings_change
         if not self.start_pairing():
@@ -180,6 +224,20 @@ class RoonSkill(OVOSSkill):
                 update_settings_interval,
                 name="RoonSettingsUpdate",
             )
+
+    def initialize(self):
+        """Init skill."""
+        super().initialize()
+        self.log.info("roon init")
+        # Setup handlers for playback control messages
+        self.add_event("mycroft.audio.service.next", self.handle_next)
+        self.add_event("mycroft.audio.service.prev", self.handle_prev)
+        self.add_event("mycroft.audio.service.pause", self.handle_pause)
+        self.add_event("mycroft.audio.service.resume", self.handle_resume)
+        self.add_event("mycroft.audio.service.stop", self.handle_stop)
+        self.add_event("mycroft.stop", self.handle_stop)
+
+        self.schedule_event(self.connect_roon_proxy, 1, name="RoonProxyConnect")
 
     def shutdown(self):
         """Shutdown skill."""
@@ -197,12 +255,27 @@ class RoonSkill(OVOSSkill):
         settings_port = settings.get("port")
         auth_opts = auth_settings_valid(auth)
         pairing_started = False
+
         if auth_opts:
             # we have valid auth settings
             # so start the pairing process
             self.log.info("Starting roon pairing with saved settings")
             self.roon_proxy.pair(auth_opts)
             pairing_started = True
+        elif os.environ.get("ROON_HOST") and os.environ.get("ROON_TOKEN"):
+            pairing_started = True
+            self.log.info(
+                f"Starting roon pairing host={settings_host} and port={settings_port}"
+            )
+            self.roon_proxy.pair(
+                RoonManualPairSettings(
+                    host=os.environ["ROON_HOST"],
+                    port=int(os.environ["ROON_PORT"]),
+                    token=os.environ["ROON_TOKEN"],
+                    core_id=os.environ["ROON_CORE_ID"],
+                    core_name=os.environ["ROON_CORE_NAME"],
+                )
+            )
         elif settings_host and settings_port:
             # user has manually entered the host and port, so we can attempt to pair
             # but this will require authorization from the user in the Roon app
@@ -231,7 +304,7 @@ class RoonSkill(OVOSSkill):
     def handle_paired(self):
         self.log.info(f"handle_paired {self.paired} {self.pairing_status}")
         if self.paired:
-            # we want to reguraly check to see if we paired
+            # we want to regularly check to see if we paired
             # but not so often now that we paired once
             self.cancel_scheduled_event("RoonPairing")
             self.schedule_repeating_event(
@@ -242,6 +315,7 @@ class RoonSkill(OVOSSkill):
                 name="RoonPairing",
             )
             self.schedule_cache_update()
+            self.update_library_cache()
 
     def update_pair_status(self):
         prev_status = self.pairing_status
@@ -313,7 +387,7 @@ class RoonSkill(OVOSSkill):
             self.cache = self.roon_proxy.update_cache()
             self.update_entities()
 
-    def _write_entity_file(self, name, data):
+    def old_write_entity_file(self, name, data):
         with open(
             os.path.join(self.root_dir, "locale", self.lang, f"{name}.entity"),
             "w+",
@@ -321,6 +395,23 @@ class RoonSkill(OVOSSkill):
         ) as f:
             f.write("\n".join(data))
         self.register_entity_file(f"{name}.entity")
+
+    def _write_entity_file(self, name, data):
+        """Write the entity file to the appropriate location on disk
+        Only writes the file if it has changed (to prevent init loops)"""
+        file_path = os.path.join(self.root_dir, "locale", self.lang, f"{name}.entity")
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8") as f:
+                existing_content = f.read()
+        else:
+            existing_content = None
+
+        new_content = "\n".join(data)
+
+        if existing_content != new_content:
+            with open(file_path, "w+", encoding="utf-8") as f:
+                f.write(new_content)
+            self.register_entity_file(f"{name}.entity")
 
     def update_entities(self):
         """Update locale entity files."""
@@ -361,9 +452,10 @@ class RoonSkill(OVOSSkill):
         """Get the target zone id from a user's query."""
         if isinstance(message, str):
             zone_name = message
+            self.log.debug(f"get_target_zone str {message}")
         else:
             zone_name = message.data.get("zone_or_output")
-            self.log.info(
+            self.log.debug(
                 "get_target_zone message data=%s, ctx=%s, type=%s",
                 message.data,
                 message.context,
@@ -380,15 +472,24 @@ class RoonSkill(OVOSSkill):
                 zone["display_name"],
             )
             return zone["zone_id"]
+        self.log.info(f"no zone found from '{zone_name}'")
         return None
 
     def get_target_output(self, message: Union[str, Message]) -> Optional[str]:
         """Get the target output id from a user's query."""
         if isinstance(message, str):
             output_name = message
+            self.log.info(f"get_target_output str {message}")
         else:
             output_name = message.data.get("zone_or_output")
+            self.log.info(
+                "get_target_output message data=%s, ctx=%s, type=%s",
+                message.data,
+                message.context,
+                message.msg_type,
+            )
         outputs = list(self.cache.outputs.values())
+        self.log.info("outputs %s", outputs)
         output, confidence = match_one(output_name, outputs, "display_name")
         if confidence < 0.6:
             return None
@@ -399,6 +500,7 @@ class RoonSkill(OVOSSkill):
                 output["display_name"],
             )
             return output["output_id"]
+        self.log.info(f"no output found from '{output_name}'")
         return None
 
     def get_target_zone_or_output(self, message: Union[str, Message]) -> Optional[str]:
@@ -432,12 +534,14 @@ class RoonSkill(OVOSSkill):
         return False
 
     @intent_handler("ConfigureRoon.intent")
+    @ensure_proxy_connected
     def handle_configure_roon(self, message: Message):
-        settings = self.get_settings()
         auth = self.get_auth()
         if self.paired and auth:
             self.handle_roon_status(message)
-        if self.pairing_status == PairingStatus.NOT_STARTED:
+        elif self.pairing_status == PairingStatus.WAITING_FOR_AUTHORIZATION:
+            self.speak_dialog("AuthorizationWaiting")
+        elif self.pairing_status == PairingStatus.NOT_STARTED:
             if self.start_pairing():
                 self.speak_dialog("PairingInProgress")
             else:
@@ -447,17 +551,18 @@ class RoonSkill(OVOSSkill):
     def handle_roon_status(self, message: Message):
         # pylint: disable=unused-argument
         """Handle roon status command."""
-        auth = self.get_auth()
         self.log.info(f"handle_roon_status {self.pairing_status}")
-        if self.paired and auth:
-            self.speak_dialog(
-                "RoonStatus",
-                {
-                    "name": auth.get("core_name"),
-                    "host": auth.get("host"),
-                    "port": auth.get("port"),
-                },
-            )
+        if self.paired:
+            auth = self.get_auth()
+            if auth:
+                self.speak_dialog(
+                    "RoonStatus",
+                    {
+                        "name": auth.get("core_name"),
+                        "host": auth.get("host"),
+                        "port": auth.get("port"),
+                    },
+                )
         elif self.pairing_status == PairingStatus.WAITING_FOR_AUTHORIZATION:
             self.speak_dialog("AuthorizationWaiting")
         elif self.pairing_status == PairingStatus.IN_PROGRESS:
@@ -472,6 +577,7 @@ class RoonSkill(OVOSSkill):
         .require("Default")
         .require("Zone")
     )
+    @ensure_paired
     def handle_get_default_zone(self, message: Message):
         # pylint: disable=unused-argument
         """Handle get default zone command."""
@@ -489,6 +595,7 @@ class RoonSkill(OVOSSkill):
     @intent_handler(
         IntentBuilder("ListZones").optionally("Roon").require("List").require("Zone")
     )
+    @ensure_paired
     def list_zones(self, message: Message):
         # pylint: disable=unused-argument
         """List available zones."""
@@ -523,6 +630,7 @@ class RoonSkill(OVOSSkill):
         .require("List")
         .require("Device")
     )
+    @ensure_paired
     def list_outputs(self, message: Message):
         # pylint: disable=unused-argument
         """List available devices."""
@@ -556,6 +664,7 @@ class RoonSkill(OVOSSkill):
         .require("Set")
         .require("SetZone")
     )
+    @ensure_paired
     def handle_set_default_zone(self, message: Message):
         """Handle set default zone command."""
         zone_name = message.data.get("SetZone")
@@ -586,6 +695,7 @@ class RoonSkill(OVOSSkill):
             self.gui.release()
 
     @intent_handler("Stop.intent")
+    @ensure_paired
     def handle_stop(self, message: Message):
         """Stop playback."""
         if self.roon_not_connected():
@@ -595,6 +705,7 @@ class RoonSkill(OVOSSkill):
             self.roon_proxy.playback_control(zone_id, control="stop")
 
     @intent_handler("Pause.intent")
+    @ensure_paired
     def handle_pause(self, message: Message):
         """Pause playback."""
         if self.roon_not_connected():
@@ -603,7 +714,8 @@ class RoonSkill(OVOSSkill):
         if zone_id:
             self.roon_proxy.playback_control(zone_id, control="pause")
 
-    # @intent_handler("Resume.intent")
+    @intent_handler("Resume.intent")
+    @ensure_paired
     def handle_resume(self, message: Message):
         """Resume playback."""
         if self.roon_not_connected():
@@ -613,6 +725,7 @@ class RoonSkill(OVOSSkill):
             self.roon_proxy.playback_control(zone_id, control="play")
 
     @intent_handler("Next.intent")
+    @ensure_paired
     def handle_next(self, message: Message):
         """Next playback."""
         if self.roon_not_connected():
@@ -622,6 +735,7 @@ class RoonSkill(OVOSSkill):
             self.roon_proxy.playback_control(zone_id, control="next")
 
     @intent_handler("Prev.intent")
+    @ensure_paired
     def handle_prev(self, message: Message):
         """Prev playback."""
         if self.roon_not_connected():
@@ -631,6 +745,7 @@ class RoonSkill(OVOSSkill):
             self.roon_proxy.playback_control(zone_id, control="previous")
 
     @intent_handler("Mute.intent")
+    @ensure_paired
     def handle_mute(self, message: Message):
         """Mute playback."""
         if self.roon_not_connected():
@@ -644,6 +759,7 @@ class RoonSkill(OVOSSkill):
                 )
 
     @intent_handler("Unmute.intent")
+    @ensure_paired
     def handle_unmute(self, message: Message):
         """Unmute playback."""
         if self.roon_not_connected():
@@ -656,6 +772,7 @@ class RoonSkill(OVOSSkill):
             )
 
     @intent_handler("IncreaseVolume.intent")
+    @ensure_paired
     def handle_volume_increase(self, message: Message):
         """Increase the volume a little bit."""
         if self.roon_not_connected():
@@ -666,6 +783,7 @@ class RoonSkill(OVOSSkill):
             self.acknowledge()
 
     @intent_handler("DecreaseVolume.intent")
+    @ensure_paired
     def handle_volume_decrease(self, message: Message):
         """Decrease the volume a little bit."""
         if self.roon_not_connected():
@@ -676,6 +794,7 @@ class RoonSkill(OVOSSkill):
             self.acknowledge()
 
     @intent_handler("SetVolumePercent.intent")
+    @ensure_paired
     def handle_set_volume_percent(self, message: Message):
         """Set volume to a percentage."""
         if self.roon_not_connected():
@@ -683,8 +802,10 @@ class RoonSkill(OVOSSkill):
         percent = extract_number(message.data["utterance"].replace("%", ""))
         percent = int(percent)
         zone_id = self.get_target_zone_or_output(message)
-        self._set_volume(zone_id, percent)
-        self.acknowledge()
+        if zone_id:
+            self.log.info(f"set_vol_percent {percent} {zone_id}")
+            self._set_volume(zone_id, percent)
+            self.acknowledge()
 
     def _step_volume(self, zone_or_output_id, step):
         """Change the volume by a relative step."""
@@ -723,3 +844,162 @@ class RoonSkill(OVOSSkill):
                 output["output_id"],
                 r,
             )
+
+    # @intent_handler("PlayAlbum.intent")
+    # def handle_album(self, message: Message):
+    #    """Handle the searching and playing of a album
+
+    #    :param message: List of registered utterances
+    #    :type message: dict
+    #    """
+    #    album = message.data.get("album")
+    #    zone_or_output = message.data.get("zone_or_output")
+    #    self.debug_message(message, "PlayAlbum")
+    #    zone_id = self.get_target_zone_or_output(message)
+    #    if message.data.get("artist"):
+    #        artist = message.data.get("artist")
+
+    #    self.roon_proxy.play_media(zone_id, album, artist)
+    #    data, confidence = self.roon.search_type(album, TYPE_ALBUM)
+    #    self.log.info(f"search result conf={confidence} data={data}")
+    #    self._play(data, message.data.get("utterances")[0])
+
+    def regex_translate(self, regex) -> Pattern:
+        """Translate the given regex."""
+        if regex not in self.regexes:
+            path = self.find_resource(regex + ".regex")
+            if path:
+                with open(path, "r", encoding="utf-8") as f:
+                    string = f.read().strip()
+                self.regexes[regex] = re.compile(string)
+        return self.regexes[regex]
+
+    def regex_remove(self, phrase: str, regex_name: str) -> str:
+        regex = self.regex_translate(regex_name)
+        if regex:
+            return re.sub(regex, "", phrase, re.IGNORECASE)
+        return phrase
+
+    def regex_match(self, phrase: str, regex_name: str) -> Optional[Match]:
+        regex = self.regex_translate(regex_name)
+        if regex:
+            return re.match(regex_name, phrase, re.IGNORECASE)
+
+    def regex_search(self, phrase: str, regex_name: str) -> Optional[Match]:
+        regex = self.regex_translate(regex_name)
+        if regex:
+            return re.search(regex_name, phrase, re.IGNORECASE)
+
+    def _specific_query(self, phrase: str) -> List[OVOSAudioTrack]:
+        for item_type in ItemType.searchable:
+            type_name = item_type.name.lower()
+            if self.voc_match(phrase, type_name):
+                phrase = self.remove_voc(phrase, type_name)
+                self.log.info("%s phrase: %s", item_type.name, phrase)
+                return self._query_type(item_type, phrase)
+
+        match = self.regex_match(phrase, "genre1")
+        if not match:
+            match = self.regex_match(phrase, "genre2")
+        self.log.info("genre match: %s", match)
+        if match:
+            genre = match.groupdict()["genre"]
+            return self._query_type(ItemType.GENRE, genre)
+        return []
+
+    def _browse_item_to_ovos_audio_track(
+        self, item: EnrichedBrowseItem
+    ) -> Optional[OVOSAudioTrack]:
+        """Convert a browse item to an ovos audio track."""
+        media_type = MediaType.MUSIC
+        zone_id = item["mycroft"].get("zone_id")
+
+        path = None
+        if "path" in item["mycroft"] and item["mycroft"]["path"]:
+            encoded_parts = [quote(part) for part in item["mycroft"]["path"]]
+            path = "/path/" + "/".join(encoded_parts)
+        elif "session_key" in item["mycroft"] and item["mycroft"]["session_key"]:
+            path = "/session/" + item["mycroft"]["session_key"]
+        if not path:
+            return None
+        if zone_id:
+            path += f"?zone_or_output={quote(zone_id)}"
+        uri = f"roon:/{path}"
+
+        return cast(
+            OVOSAudioTrack,
+            {
+                "match_confidence": int(item["confidence"] * 100),
+                "media_type": media_type,
+                # "length":
+                "uri": uri,
+                "playback": PlaybackType.SKILL,
+                # "image": r["image"],
+                # "bg_image": r["bg_image"],
+                # "skill_icon": self.skill_icon,
+                "title": item["title"],
+                # "artist": r["artist"],
+                # "album": r["album"],
+                "skill_id": self.skill_id,
+            },
+        )
+
+    def _query_type(self, item_type: ItemType, query: str) -> List[OVOSAudioTrack]:
+        """Try and find a specific item type."""
+        self.log.info("_query_type: %s", query)
+        data: List[EnrichedBrowseItem] = self.roon_proxy.search_type(item_type, query)
+        self.log.info("data: %s", data)
+        maybe_tracks = [self._browse_item_to_ovos_audio_track(item) for item in data]
+        return [item for item in maybe_tracks if item is not None]
+
+    def _generic_query(self, query: str) -> List[OVOSAudioTrack]:
+        self.log.info("_generic_query: %s", query)
+        return []
+
+    @ocp_search()
+    @ensure_paired
+    def search(self, utterance: str, media_type: MediaType) -> List[OVOSAudioTrack]:
+        """Search for media."""
+        self.log.info("ocp_search: %s %s", media_type, utterance)
+        phrase = utterance
+        base_score = 0
+        if self.regex_match(phrase, "OnRoon"):
+            phrase = self.regex_remove(phrase, "OnRoon")
+            base_score = 40
+
+        zone_match = self.regex_search(phrase, "AtZone")
+        zone_id = None
+        zone_name = None
+        if zone_match:
+            try:
+                zone_name = zone_match.group("zone_or_output")
+                self.log.info("Extracted raw %s", zone_name)
+                zone_id = self.get_target_zone_or_output(zone_name)
+                self.log.info("matched to %s", zone_name)
+                phrase = zone_match.group("query")
+            except IndexError:
+                self.log.info("failed to extract zone")
+
+        self.log.info("utterance: %s", utterance)
+        self.log.info("phrase: %s", phrase)
+        if zone_id:
+            self.log.info("zone_name: %s", zone_name)
+            self.log.info("zone_id: %s", self.zone_name(zone_id))
+        self.log.info("base_score: %s", base_score)
+
+        result = self._specific_query(phrase)
+        if len(result) > 0:
+            self.log.info("RETURNING OCP SEARCH RESULTS")
+            self.log.info("%s", result)
+            return result
+        return []
+        # if not data:
+        #    data = self._generic_query(phrase)
+        # if data:
+        #    pass
+        #
+
+    @ocp_play()
+    @ensure_paired
+    def play(self, message: Message) -> None:
+        self.log.info("ocp_play: %s", message)

@@ -47,7 +47,6 @@ class Client:
         self.default_retries: int = default_retries
 
     def connect(self) -> None:
-        assert self.socket
         self._init()
 
     def disconnect(self) -> None:

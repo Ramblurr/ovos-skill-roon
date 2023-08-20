@@ -14,8 +14,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """Constants for the Roon skill"""
-from typing import Literal
-from enum import Enum
+from dataclasses import dataclass
+from typing import Any, Dict, List, Literal, Optional, TypedDict, Union, Tuple
+from enum import Enum, unique
+
+from .roon_types import BrowseItemHint
 
 AUTHENTICATE_TIMEOUT = 5
 
@@ -57,27 +60,33 @@ PAGE_SIZE = 100
 DEFAULT_VOLUME_STEP = 10
 
 
-class SearchableItemTypes(Enum):
-    TYPE_TRACK = TYPE_TRACK
-    TYPE_ALBUM = TYPE_ALBUM
-    TYPE_ARTIST = TYPE_ARTIST
-    TYPE_PLAYLIST = TYPE_PLAYLIST
-    TYPE_TAG = TYPE_TAG
+@unique
+class ItemType(Enum):
+    TRACK = TYPE_TRACK
+    ALBUM = TYPE_ALBUM
+    ARTIST = TYPE_ARTIST
+    PLAYLIST = TYPE_PLAYLIST
+    GENRE = TYPE_GENRE
+    STATION = TYPE_STATION
+    TAG = TYPE_TAG
 
+    @classmethod
+    @property
+    def filterable(self):
+        return self.STATION, self.GENRE
 
-class FilterableItemTypes(Enum):
-    TYPE_STATION = TYPE_STATION
-    TYPE_GENRE = TYPE_GENRE
+    @property
+    def is_filterable(self):
+        return self in self.filterable
 
+    @classmethod
+    @property
+    def searchable(self):
+        return self.TRACK, self.ALBUM, self.ARTIST, self.PLAYLIST, self.TAG
 
-class ItemTypes(Enum):
-    TYPE_TRACK = TYPE_TRACK
-    TYPE_ALBUM = TYPE_ALBUM
-    TYPE_ARTIST = TYPE_ARTIST
-    TYPE_PLAYLIST = TYPE_PLAYLIST
-    TYPE_GENRE = TYPE_GENRE
-    TYPE_STATION = TYPE_STATION
-    TYPE_TAG = TYPE_TAG
+    @property
+    def is_searchable(self):
+        return self in self.searchable
 
 
 class PairingStatus(Enum):
@@ -93,3 +102,22 @@ class DiscoverStatus(Enum):
     DISCOVERED = "discovered"
     FAILED = "failed"
     NOT_STARTED = "not-started"
+
+
+class MycroftMetadata(TypedDict):
+    path: Optional[List[str]]
+    session_key: Optional[str]
+    type: Optional[ItemType]
+
+
+class EnrichedBrowseItem(TypedDict):
+    title: str
+    subtitle: Optional[str]
+    image_key: Optional[str]
+    item_key: Optional[str]
+    hint: Optional[BrowseItemHint]
+    mycroft: MycroftMetadata
+    confidence: float
+
+
+DataAndConfidence = Tuple[Optional[EnrichedBrowseItem], float]

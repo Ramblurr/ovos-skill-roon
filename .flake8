@@ -3,3 +3,5 @@
 extend-ignore =
   # line too long
   E501
+
+inline-quotes = "

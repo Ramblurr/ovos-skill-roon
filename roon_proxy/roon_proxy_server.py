@@ -42,6 +42,9 @@ from .schema import (
     Shuffle,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
+    SearchAndPlay,
+    SearchType,
+    SearchTypeResult,
 )
 
 log = logging.getLogger(__name__)
@@ -87,6 +90,11 @@ def handle_discover_result(
     else:
         discovery = Discovery()
         log.info(f"Failed to pair to a roon core")
+
+
+@app.register_rpc
+async def connect_rpc_server() -> None:
+    return
 
 
 @app.register_rpc
@@ -198,6 +206,20 @@ async def playback_control(roon: RoonCore, cmd: PlaybackControl) -> None:
 @ensure_roon
 async def play(roon: RoonCore, cmd: Union[PlayPath, PlaySearch]) -> None:
     roon.play(cmd)
+
+
+@app.register_rpc
+@ensure_roon
+async def play_type(roon: RoonCore, cmd: SearchAndPlay) -> None:
+    roon.play_type(cmd)
+
+
+@app.register_rpc
+@ensure_roon
+async def search_type(roon: RoonCore, cmd: SearchType) -> SearchTypeResult:
+    r = roon.search_type(cmd.item_type, cmd.query)
+    log.info("%s", r)
+    return r
 
 
 def main():

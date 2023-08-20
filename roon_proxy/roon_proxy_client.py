@@ -13,11 +13,11 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Union
+from typing import Union, Optional, List
 
 from rpc.client_sync import Client
 
-from .const import PairingStatus
+from .const import PairingStatus, ItemType, EnrichedBrowseItem
 from .roon_types import PlaybackControlOption, RepeatOption
 from .schema import (
     MuteRequest,
@@ -32,6 +32,9 @@ from .schema import (
     Shuffle,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
+    SearchAndPlay,
+    SearchType,
+    SearchTypeResult,
 )
 
 
@@ -41,6 +44,7 @@ class RoonProxyClient:
 
     def connect(self) -> None:
         self.ipc.connect()
+        self.ipc.dispatch("connect_rpc_server")
 
     def disconnect(self) -> None:
         self.ipc.disconnect()
@@ -95,8 +99,34 @@ class RoonProxyClient:
             "playback_control", PlaybackControl(zone_or_output_id, control)
         )
 
+    def search_type(self, item_type: ItemType, query: str) -> List[EnrichedBrowseItem]:
+        r = self.ipc.dispatch("search_type", SearchType(item_type, query))
+        print(r)
+        return r.results
+
     def play(self, play: Union[PlayPath, PlaySearch]) -> None:
         self.ipc.dispatch("play", play)
+
+    def play_artist(self, artist: str) -> None:
+        self.ipc.dispatch("play_type", SearchAndPlay(name=artist))
+
+    def play_album(self, album: str, artist: Optional[str]) -> None:
+        self.ipc.dispatch("play_type", SearchAndPlay(name=album, artist=artist))
+
+    def play_radio(self, station_name: str) -> None:
+        self.ipc.dispatch("play_type", SearchAndPlay(name=station_name))
+
+    def play_playlist(self, playlist_name: str) -> None:
+        self.ipc.dispatch("play_type", SearchAndPlay(name=playlist_name))
+
+    def play_track(self, track_name: str) -> None:
+        self.ipc.dispatch("play_type", SearchAndPlay(name=track_name))
+
+    def play_tag(self, tag_name: str) -> None:
+        self.ipc.dispatch("play_type", SearchAndPlay(name=tag_name))
+
+    def play_genre(self, genre_name: str) -> None:
+        self.ipc.dispatch("play_type", SearchAndPlay(name=genre_name))
 
 
 def main():

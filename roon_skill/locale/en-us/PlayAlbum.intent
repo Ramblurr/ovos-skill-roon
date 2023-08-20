@@ -1,2 +1,0 @@
-play {album} album (on | in | at) (the|) {zone_or_output}
-play {album} album by {artist} (on | in | at) (the|) {zone_or_output}

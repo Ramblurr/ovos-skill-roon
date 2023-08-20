@@ -18,7 +18,12 @@ from typing import Any, Dict, List, Optional
 
 from rpc.schema import Payload, register_message_type
 
-from .const import DiscoverStatus, PairingStatus
+from .const import (
+    DiscoverStatus,
+    PairingStatus,
+    ItemType,
+    EnrichedBrowseItem,
+)
 from .roon_types import PlaybackControlOption, RepeatOption
 
 
@@ -99,14 +104,42 @@ class PlaybackControl(Payload):
     playback_control: PlaybackControlOption
 
 
+@register_message_type
 class PlaySearch(Payload):
     zone_or_output_id: str
     item_key: str
     session_key: str
 
 
+@register_message_type
 class PlayPath(Payload):
     zone_or_output_id: str
     path: List[str]
     report_error: bool = True
     action: Optional[str] = None
+
+
+@register_message_type
+class SearchAndPlay(Payload):
+    """
+    Search for an item and play it.
+    name should be the name of the thing (album, playlist etc.)
+    If artist_extra is provided, it will be used to narrow the search if the item type can have an artist.
+    When playing an artist/composer directly, artist_extra should be None and the name of the artist should be
+    passed in name
+    """
+
+    item_type: ItemType
+    name: str
+    artist_extra: Optional[str] = None
+
+
+@register_message_type
+class SearchType(Payload):
+    item_type: ItemType
+    query: str
+
+
+@register_message_type
+class SearchTypeResult(Payload):
+    results: List[EnrichedBrowseItem]
