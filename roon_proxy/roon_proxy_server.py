@@ -42,7 +42,6 @@ from .schema import (
     Shuffle,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
-    SearchAndPlay,
     SearchType,
     SearchTypeResult,
 )
@@ -206,12 +205,6 @@ async def playback_control(roon: RoonCore, cmd: PlaybackControl) -> None:
 @ensure_roon
 async def play(roon: RoonCore, cmd: Union[PlayPath, PlaySearch]) -> None:
     roon.play(cmd)
-
-
-@app.register_rpc
-@ensure_roon
-async def play_type(roon: RoonCore, cmd: SearchAndPlay) -> None:
-    roon.play_type(cmd)
 
 
 @app.register_rpc

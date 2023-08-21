@@ -32,7 +32,7 @@ from .roon_types import (
     RoonAuthSettings,
     ServiceTransportResponse,
 )
-from .schema import PlayPath, PlaySearch, RoonCacheData, SearchAndPlay, SearchTypeResult
+from .schema import PlayPath, PlaySearch, RoonCacheData, SearchTypeResult
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -132,9 +132,6 @@ class RoonCore:
             roon_play_search_result(
                 self.roon, play.zone_or_output_id, play.item_key, play.session_key
             )
-
-    def play_type(self, cmd: SearchAndPlay) -> None:
-        pass
 
     def search_type(self, item_type: ItemType, query: str) -> SearchTypeResult:
         results: List[EnrichedBrowseItem] = roon_search_type(
