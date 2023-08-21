@@ -15,8 +15,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """Constants for the Roon skill"""
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, TypedDict, Union, Tuple
 from enum import Enum, unique
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypedDict, Union
 
 from .roon_types import BrowseItemHint
 

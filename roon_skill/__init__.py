@@ -15,75 +15,57 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # pylint: disable=invalid-name
 """Roon Skill."""
-from urllib.parse import quote, unquote, urlparse, parse_qs
-from dataclasses import asdict
-from functools import wraps
+import hashlib
 import os
 import re
-import rpc.error
-from typing import (
-    Any,
-    Pattern,
-    Dict,
-    List,
-    Optional,
-    Match,
-    Union,
-    TypedDict,
-    List,
-    cast,
-)
-
+from functools import wraps
+from typing import Any, Dict, List, Match, Optional, Pattern, TypedDict, Union, cast
 
 from adapt.intent import IntentBuilder
+from lingua_franca.parse import extract_number
 from ovos_bus_client.message import Message
+from ovos_plugin_common_play.ocp import MediaType, PlaybackType
 
 # from mycroft.skills.common_play_skill import CPSMatchLevel
 from ovos_workshop.decorators import intent_handler, resting_screen_handler
-from lingua_franca.parse import extract_number
-from ovos_plugin_common_play.ocp import MediaType, PlaybackType
 from ovos_workshop.skills.common_play import (
     OVOSCommonPlaybackSkill,
-    ocp_search,
     ocp_play,
+    ocp_search,
 )
 
-from roon_proxy.const import (
-    DiscoverStatus,
-    PairingStatus,
-    ItemType,
-)
-from roon_proxy.roon_cache import empty_roon_cache
-
-from roon_proxy.schema import RoonCacheData, RoonManualPairSettings
-
-from roon_proxy.roon_types import (
-    RoonSubscriptionEvent,
-    RoonAuthSettings,
-    RoonApiErrorResponse,
-    RoonApiBrowseLoadResponse,
-    RoonApiBrowseResponse,
-    EVENT_ZONE_CHANGED,
-    EVENT_ZONE_SEEK_CHANGED,
-    EVENT_OUTPUT_CHANGED,
-)
+import rpc.error
 from roon_proxy.const import (
     CONF_DEFAULT_ZONE_ID,
     CONF_DEFAULT_ZONE_NAME,
     DEFAULT_VOLUME_STEP,
-    NOTHING_FOUND,
-    ROON_KEYWORDS,
-    TYPE_ALBUM,
-    TYPE_ARTIST,
-    TYPE_GENRE,
-    TYPE_PLAYLIST,
-    TYPE_STATION,
-    TYPE_TAG,
+    DiscoverStatus,
     EnrichedBrowseItem,
+    ItemType,
+    PairingStatus,
 )
-
+from roon_proxy.roon_cache import empty_roon_cache
 from roon_proxy.roon_proxy_client import RoonProxyClient
+from roon_proxy.roon_types import (
+    EVENT_OUTPUT_CHANGED,
+    EVENT_ZONE_CHANGED,
+    EVENT_ZONE_SEEK_CHANGED,
+    RoonApiBrowseLoadResponse,
+    RoonApiBrowseResponse,
+    RoonApiErrorResponse,
+    RoonAuthSettings,
+    RoonSubscriptionEvent,
+)
+from roon_proxy.schema import RoonCacheData, RoonManualPairSettings
 from roon_proxy.util import match_one
+
+from .types import (
+    OVOSAudioTrack,
+    RoonNotAuthorizedError,
+    RoonPlayData,
+    RoonSkillSettings,
+)
+from .util import from_roon_uri, remove_nulls, to_roon_uri
 
 STATUS_KEYS = [
     "line1",
@@ -100,44 +82,6 @@ STATUS_KEYS = [
     "hasArtistImage"
     "artistBlurredImageUrl",
 ]
-
-
-class RoonSkillSettings(TypedDict):
-    __mycroft_skill_firstrun: bool
-    auth_waiting: Optional[bool]
-    auth: Optional[RoonAuthSettings]
-    host: Optional[str]
-    port: Optional[int]
-    default_zone_id: Optional[str]
-    default_zone_name: Optional[str]
-
-
-class RoonNotAuthorizedError(Exception):
-    """Error for when Roon isn't authorized."""
-
-
-class RoonPlayData(TypedDict):
-    zone_or_output_id: Optional[str]
-    path: Optional[List[str]]
-    session_key: Optional[str]
-    item_key: Optional[str]
-
-
-class OVOSAudioTrack(TypedDict):
-    uri: str  # URL/URI of media, OCP will handle formatting and file handling
-    title: str
-    media_type: MediaType
-    playback: PlaybackType
-    match_confidence: int  # 0-100
-    album: Optional[str]
-    artist: Optional[str]
-    length: Optional[int]  # milliseconds
-    image: Optional[str]
-    bg_image: Optional[str]
-    skill_icon: Optional[str]  # Optional filename for skill icon
-    skill_id: Optional[
-        str
-    ]  # Optional ID of skill to distinguish where results came from
 
 
 def auth_settings_valid(
@@ -430,10 +374,18 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         def norm(s):
             return s.lower().replace("’", "'")
 
-        zone_names = [norm(z["display_name"]) for z in self.cache.zones.values()]
+        zone_names = [
+            norm(z["display_name"])
+            for z in self.cache.zones.values()
+            if "display_name" in z
+        ]
         self._write_entity_file("zone_name", zone_names)
 
-        output_names = [norm(z["display_name"]) for z in self.cache.outputs.values()]
+        output_names = [
+            norm(z["display_name"])
+            for z in self.cache.outputs.values()
+            if "display_name" in z
+        ]
         self._write_entity_file("output_name", output_names)
         combined = sorted(set(zone_names + output_names))
         self._write_entity_file("zone_or_output", combined)
@@ -911,14 +863,14 @@ class RoonSkill(OVOSCommonPlaybackSkill):
             return re.search(regex, phrase)
         self.log.error(f"unknown regex {regex_name}")
 
-    def _specific_query(self, phrase: str) -> List[EnrichedBrowseItem]:
+    def _specific_query(self, phrase: str, zone_id: str) -> List[OVOSAudioTrack]:
         self.log.debug("_specific_query %s", phrase)
         for item_type in ItemType.searchable:
             type_name = item_type.name.lower()
             if self.voc_match(phrase, type_name):
                 phrase = self.remove_voc(phrase, type_name)
                 self.log.info("%s phrase: %s", item_type.name, phrase)
-                return self._query_type(item_type, phrase)
+                return self._query_type(item_type, phrase, zone_id)
             else:
                 self.log.debug("_specific_query nomatch %s", type_name)
 
@@ -928,60 +880,19 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         self.log.info("genre match: %s", match)
         if match:
             genre = match.groupdict()["genre"]
-            return self._query_type(ItemType.GENRE, genre)
+            return self._query_type(ItemType.GENRE, genre, zone_id)
         return []
-
-    def _to_uri(self, zone_id: str, item: EnrichedBrowseItem):
-        path = None
-        if "path" in item["mycroft"] and item["mycroft"]["path"]:
-            encoded_parts = [quote(part) for part in item["mycroft"]["path"]]
-            path = "/path/" + "/".join(encoded_parts)
-        elif (
-            "session_key" in item["mycroft"]
-            and item["mycroft"]["session_key"]
-            and item["item_key"]
-        ):
-            path = "/session/" + item["mycroft"]["session_key"] + "/" + item["item_key"]
-        if not path:
-            self.log.info(f"Failed to get path for {item}")
-            return None
-        if zone_id:
-            path += f"?zone_or_output={quote(zone_id)}"
-        return f"roon://{path}"
-
-    def _from_uri(self, uri: str) -> RoonPlayData:
-        self.log.info(f"_from_uri {uri}")
-        if uri.startswith("roon:/"):
-            url = urlparse(uri)
-            parts = url.path.split("/")
-            parts.pop(0)  # first /
-            play_type = parts.pop(0)  # /path or /session
-            zone_or_output = parse_qs(url.query).get("zone_or_output", [None])[0]
-            if play_type == "path":
-                decoded_parts = [unquote(part) for part in parts if part]
-                return RoonPlayData(
-                    path=decoded_parts,
-                    zone_or_output_id=zone_or_output,
-                    session_key=None,
-                    item_key=None,
-                )
-            elif play_type == "session":
-                session_key = parts.pop(0)
-                item_key = parts.pop(0)
-                return RoonPlayData(
-                    path=None,
-                    zone_or_output_id=zone_or_output,
-                    session_key=session_key,
-                    item_key=item_key,
-                )
-        raise Exception(f"Unknown type of uri: {uri}")
 
     def _browse_item_to_ovos_audio_track(
         self, zone_id: str, item: EnrichedBrowseItem
     ) -> Optional[OVOSAudioTrack]:
         """Convert a browse item to an ovos audio track."""
         media_type = MediaType.AUDIO
-        uri = self._to_uri(zone_id, item)
+
+        uri = to_roon_uri(zone_id, item)
+        if not uri:
+            self.log.info(f"Failed to parse roon uri {uri}")
+            return None
         return cast(
             OVOSAudioTrack,
             {
@@ -1000,16 +911,26 @@ class RoonSkill(OVOSCommonPlaybackSkill):
             },
         )
 
-    def _query_type(self, item_type: ItemType, query: str) -> List[EnrichedBrowseItem]:
+    def _query_type(
+        self, item_type: ItemType, query: str, zone_id: str
+    ) -> List[OVOSAudioTrack]:
         """Try and find a specific item type."""
         self.log.info("_query_type: %s", query)
         data: List[EnrichedBrowseItem] = self.roon_proxy.search_type(item_type, query)
         self.log.info("data: %s", data)
-        return data
+        return remove_nulls(
+            [self._browse_item_to_ovos_audio_track(zone_id, item) for item in data]
+        )
 
-    def _generic_query(self, query: str) -> List[EnrichedBrowseItem]:
-        self.log.info("_generic_query: %s", query)
-        return []
+    def _generic_query(self, query: str, zone_id: str) -> List[OVOSAudioTrack]:
+        session_key = hashlib.md5(query.encode()).hexdigest()
+        found_items = self.roon_proxy.search_generic(query, session_key)
+        return remove_nulls(
+            [
+                self._browse_item_to_ovos_audio_track(zone_id, item)
+                for item in found_items
+            ]
+        )
 
     @ocp_search()
     @ensure_paired
@@ -1049,19 +970,13 @@ class RoonSkill(OVOSCommonPlaybackSkill):
             self.log.error("Cannot complete search request, no zone/output found")
             return []
 
-        result = self._specific_query(phrase)
-        maybe_tracks = [
-            self._browse_item_to_ovos_audio_track(zone_id, item) for item in result
-        ]
-        result = [item for item in maybe_tracks if item is not None]
+        results = self._specific_query(phrase, zone_id)
+        if not results:
+            self.log.info("performing generic search")
+            results = self._generic_query(phrase, zone_id)
         self.log.info("RETURNING OCP SEARCH RESULTS")
-        self.log.info("%s", result)
-        return result
-        # if not data:
-        #    data = self._generic_query(phrase)
-        # if data:
-        #    pass
-        #
+        self.log.info("%s", results)
+        return results
 
     @ocp_play()
     @ensure_paired
@@ -1070,7 +985,8 @@ class RoonSkill(OVOSCommonPlaybackSkill):
             self.gui.release()
         self.log.info("ocp_play: %s", message)
         uri = message.data["uri"]
-        play_data = self._from_uri(uri)
+        self.log.debug(f"from_roon_uri({uri})")
+        play_data = from_roon_uri(uri)
         zone_or_output_id = play_data.get("zone_or_output_id")
         if not zone_or_output_id:
             self.log.error(f"No zone or output id in uri {uri}")

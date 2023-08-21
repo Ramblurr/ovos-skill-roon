@@ -15,12 +15,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import asyncio
 import logging
+from typing import Optional, Tuple
+
 from roonapi import RoonApi, RoonDiscovery
 
-from typing import Optional, Tuple
-from .schema import RoonManualPairSettings, RoonAuthSettings
-
 from .const import ROON_APPINFO
+from .schema import RoonAuthSettings, RoonManualPairSettings
 
 log = logging.getLogger(__name__)
 

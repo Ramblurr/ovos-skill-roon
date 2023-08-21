@@ -22,10 +22,7 @@ from roonapi import RoonApi
 
 from rpc.server import Server
 
-from .const import (
-    DiscoverStatus,
-    PairingStatus,
-)
+from .const import DiscoverStatus, PairingStatus
 from .roon_core import RoonCore
 from .roon_discovery import Discovery, Pairing
 from .schema import (
@@ -39,11 +36,12 @@ from .schema import (
     RoonDiscoverStatus,
     RoonManualPairSettings,
     RoonPairStatus,
+    SearchGeneric,
+    SearchType,
+    SearchTypeResult,
     Shuffle,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
-    SearchType,
-    SearchTypeResult,
 )
 
 log = logging.getLogger(__name__)
@@ -212,6 +210,14 @@ async def play(roon: RoonCore, cmd: Union[PlayPath, PlaySearch]) -> None:
 @ensure_roon
 async def search_type(roon: RoonCore, cmd: SearchType) -> SearchTypeResult:
     r = roon.search_type(cmd.item_type, cmd.query)
+    log.info("%s", r)
+    return r
+
+
+@app.register_rpc
+@ensure_roon
+async def search_generic(roon: RoonCore, cmd: SearchGeneric) -> SearchTypeResult:
+    r = roon.search_generic(cmd.query, cmd.session_key)
     log.info("%s", r)
     return r
 

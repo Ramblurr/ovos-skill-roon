@@ -13,11 +13,11 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-from typing import Union, Optional, List
+from typing import List, Optional, Union
 
 from rpc.client_sync import Client
 
-from .const import PairingStatus, ItemType, EnrichedBrowseItem
+from .const import EnrichedBrowseItem, ItemType, PairingStatus
 from .roon_types import PlaybackControlOption, RepeatOption
 from .schema import (
     MuteRequest,
@@ -29,11 +29,12 @@ from .schema import (
     RoonDiscoverStatus,
     RoonManualPairSettings,
     RoonPairStatus,
+    SearchGeneric,
+    SearchType,
+    SearchTypeResult,
     Shuffle,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
-    SearchType,
-    SearchTypeResult,
 )
 
 
@@ -103,6 +104,13 @@ class RoonProxyClient:
         print(r)
         return r.results
 
+    def search_generic(self, query: str, session_key: str) -> List[EnrichedBrowseItem]:
+        r = self.ipc.dispatch(
+            "search_generic", SearchGeneric(query=query, session_key=session_key)
+        )
+        print(r)
+        return r.results
+
     def play_path(self, zone_or_output_id: str, path: List[str]):
         self.ipc.dispatch(
             "play", PlayPath(path=path, zone_or_output_id=zone_or_output_id)
@@ -122,7 +130,8 @@ class RoonProxyClient:
 
 
 def main():
-    import os, time
+    import os
+    import time
 
     auth = RoonManualPairSettings(
         host=os.environ["ROON_HOST"],

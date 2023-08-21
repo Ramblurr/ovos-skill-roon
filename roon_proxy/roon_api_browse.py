@@ -16,14 +16,11 @@
 import logging
 import re
 from dataclasses import asdict
-from typing import Any, Dict, Optional, Union, cast, List
-
-from .util import match_one_item, best_match
-from .const import EnrichedBrowseItem, ItemType, DIRECT_RESPONSE_CONFIDENCE
+from typing import Any, Dict, List, Optional, Union, cast
 
 from roonapi import RoonApi
 
-from .schema import RoonCacheData
+from .const import DIRECT_RESPONSE_CONFIDENCE, EnrichedBrowseItem, ItemType
 from .roon_types import (
     BrowseItem,
     BrowseList,
@@ -33,6 +30,8 @@ from .roon_types import (
     RoonApiBrowseResponse,
     RoonApiErrorResponse,
 )
+from .schema import RoonCacheData
+from .util import best_match, match_one_item
 
 log = logging.getLogger(__name__)
 
@@ -354,7 +353,9 @@ def navigate_type_search(
     ]
 
 
-def search_generic(self, session_key: str, phrase: str) -> List[EnrichedBrowseItem]:
+def roon_search_generic(
+    roon: RoonApi, cache: RoonCacheData, session_key: str, phrase: str
+) -> List[EnrichedBrowseItem]:
     # pylint: disable=too-many-return-statements
     """Perform a generic search, returning the top result."""
     opts = RoonApiBrowseOptions(
@@ -364,7 +365,7 @@ def search_generic(self, session_key: str, phrase: str) -> List[EnrichedBrowseIt
         multi_session_key=session_key,
     )
     log.info("searching generic for %s", phrase)
-    resp = self.browse.browse(opts)
+    resp = roon_browse(roon, opts)
     if isinstance(resp, RoonApiErrorResponse):
         log.info("room browse api returned error %s", resp)
         return NOTHING_FOUND
@@ -374,7 +375,7 @@ def search_generic(self, session_key: str, phrase: str) -> List[EnrichedBrowseIt
     load_opts = RoonApiBrowseLoadOptions(
         count=10, hierarchy="search", multi_session_key=session_key
     )
-    resp = self.browse.load(load_opts)
+    resp = roon_browse_load(roon, load_opts)
     if isinstance(resp, RoonApiErrorResponse):
         log.info("room load api returned error %s", resp)
         return NOTHING_FOUND
@@ -384,7 +385,7 @@ def search_generic(self, session_key: str, phrase: str) -> List[EnrichedBrowseIt
     first_item = resp.items[0]
     opts.pop_all = False
     opts.item_key = first_item.item_key
-    resp = self.browse.browse(opts)
+    resp = roon_browse(roon, opts)
     if isinstance(resp, RoonApiErrorResponse):
         log.info("room browse api returned error %s", resp)
         return NOTHING_FOUND
