@@ -16,20 +16,13 @@
 """Utils."""
 import re
 from dataclasses import asdict
-from typing import (
-    Any,
-    Dict,
-    List,
-    Tuple,
-    Union,
-    Optional,
-    TypeVar,
-    cast,
-)
-from fuzzywuzzy import fuzz, process as fuzz_process
-from fuzzywuzzy import utils
-from .roon_types import BrowseItem
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process as fuzz_process
+from fuzzywuzzy import utils
+
+from .roon_types import BrowseItem
 
 T = TypeVar("T")
 

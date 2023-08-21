@@ -18,12 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from rpc.schema import Payload, register_message_type
 
-from .const import (
-    DiscoverStatus,
-    PairingStatus,
-    ItemType,
-    EnrichedBrowseItem,
-)
+from .const import DiscoverStatus, EnrichedBrowseItem, ItemType, PairingStatus
 from .roon_types import PlaybackControlOption, RepeatOption
 
 
@@ -123,6 +118,12 @@ class PlayPath(Payload):
 class SearchType(Payload):
     item_type: ItemType
     query: str
+
+
+@register_message_type
+class SearchGeneric(Payload):
+    query: str
+    session_key: str
 
 
 @register_message_type

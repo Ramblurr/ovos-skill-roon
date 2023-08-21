@@ -780,12 +780,12 @@ setuptools = "*"
 
 [[package]]
 name = "ovos-audio-plugin-simple"
-version = "0.0.1"
+version = "0.0.2a3"
 description = "simple audio plugin for ovos"
 optional = false
 python-versions = "*"
 files = [
-    {file = "ovos_audio_plugin_simple-0.0.1-py3-none-any.whl", hash = "sha256:e12ab8d8fd50d6882584e7d6e1932aa8825980ad7564961c9efb08f0bf4748c2"},
+    {file = "ovos_audio_plugin_simple-0.0.2a3-py3-none-any.whl", hash = "sha256:cb2efd679a5c1d8e6607cd397ea6679ee043e2ca5fc72a717904507c002d5cfa"},
 ]
 
 [package.dependencies]
@@ -936,38 +936,37 @@ wrapt = "*"
 
 [[package]]
 name = "ovos-plugin-common-play"
-version = "0.0.6a2"
+version = "0.0.6a6"
 description = "OVOS common play audio service adapter plugin"
 optional = false
 python-versions = "*"
 files = [
-    {file = "ovos_plugin_common_play-0.0.6a2-py3-none-any.whl", hash = "sha256:dfa41825d6026df31027e9c1a77e20e6d734425820de4b0093a410791ad55fcf"},
-    {file = "ovos_plugin_common_play-0.0.6a2.tar.gz", hash = "sha256:ffbdf3d12d618423c26c728cb4f98e2f82f5763c884b5a65c7c4170545e66133"},
+    {file = "ovos_plugin_common_play-0.0.6a6-py3-none-any.whl", hash = "sha256:c7378be8598cd942b1aa8e12368e268a61e114b346325b0794aae83e20b3ecec"},
+    {file = "ovos_plugin_common_play-0.0.6a6.tar.gz", hash = "sha256:d816fa29b2a0ac02e9c77a40ac431afdcba3bfb26c8dcf30e59922172f444ed5"},
 ]
 
 [package.dependencies]
 dbus-next = "*"
-ovos-audio-plugin-simple = "*"
-ovos-backend-client = ">=0.0.6,<0.1.0"
-ovos-bus-client = ">=0.0.3,<0.1.0"
+ovos-audio-plugin-simple = ">=0.0.2a3,<0.1.0"
+ovos-bus-client = ">=0.0.5,<0.1.0"
 ovos-ocp-files-plugin = ">=0.13,<1.0"
-ovos-plugin-manager = ">=0.0.22,<0.1.0"
-ovos-utils = ">=0.0.32,<0.1.0"
-ovos-workshop = ">=0.0.11,<0.1.0"
-padacioso = ">=0.1.1,<1.0"
+ovos-plugin-manager = ">=0.0.24a5,<0.1.0"
+ovos-utils = ">=0.0.35a8,<0.1.0"
+ovos-workshop = ">=0.0.12a44,<0.1.0"
+padacioso = ">=0.2,<1.0"
 
 [package.extras]
 extractors = ["ovos-ocp-bandcamp-plugin (>=0.0.1,<1.0)", "ovos-ocp-deezer-plugin (>=0.0.1,<1.0)", "ovos-ocp-m3u-plugin (>=0.0.1)", "ovos-ocp-news-plugin (>=0.0.3,<1.0)", "ovos-ocp-rss-plugin (>=0.0.2,<1.0)", "ovos-ocp-youtube-plugin (>=0.0.1,<1.0)"]
 
 [[package]]
 name = "ovos-plugin-manager"
-version = "0.0.23"
+version = "0.0.24a5"
 description = "OpenVoiceOS plugin manager"
 optional = false
 python-versions = "*"
 files = [
-    {file = "ovos-plugin-manager-0.0.23.tar.gz", hash = "sha256:179fe4f07772267a8dc79e59d76504db07780f2ea6c60751dd47cbe4f6544f75"},
-    {file = "ovos_plugin_manager-0.0.23-py3-none-any.whl", hash = "sha256:66e70a6e2f9af9986fc73afadc0664f6b9a5578258fec2e3bd527932ceb22850"},
+    {file = "ovos-plugin-manager-0.0.24a5.tar.gz", hash = "sha256:aed4731eee8218cc6c0b2f148ba417cdce9cdaacc70351a7a68362212bc47df6"},
+    {file = "ovos_plugin_manager-0.0.24a5-py3-none-any.whl", hash = "sha256:011e3a17f136dd8c7c67a656c401cfc3e38010c469644816a897109e223e2125"},
 ]
 
 [package.dependencies]
@@ -1990,4 +1989,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "763c3f8d8bc973013137066a12b6a95f3c13c162d3cb36bd7b57ef8286ced287"
+content-hash = "ef437c86fb26e62e0656f664d18936629eee5749cdf350862d0a340c2fa1d95d"
