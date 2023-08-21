@@ -120,21 +120,6 @@ class PlayPath(Payload):
 
 
 @register_message_type
-class SearchAndPlay(Payload):
-    """
-    Search for an item and play it.
-    name should be the name of the thing (album, playlist etc.)
-    If artist_extra is provided, it will be used to narrow the search if the item type can have an artist.
-    When playing an artist/composer directly, artist_extra should be None and the name of the artist should be
-    passed in name
-    """
-
-    item_type: ItemType
-    name: str
-    artist_extra: Optional[str] = None
-
-
-@register_message_type
 class SearchType(Payload):
     item_type: ItemType
     query: str

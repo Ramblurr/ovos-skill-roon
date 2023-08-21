@@ -32,7 +32,6 @@ from .schema import (
     Shuffle,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
-    SearchAndPlay,
     SearchType,
     SearchTypeResult,
 )
@@ -104,29 +103,22 @@ class RoonProxyClient:
         print(r)
         return r.results
 
-    def play(self, play: Union[PlayPath, PlaySearch]) -> None:
-        self.ipc.dispatch("play", play)
+    def play_path(self, zone_or_output_id: str, path: List[str]):
+        self.ipc.dispatch(
+            "play", PlayPath(path=path, zone_or_output_id=zone_or_output_id)
+        )
 
-    def play_artist(self, artist: str) -> None:
-        self.ipc.dispatch("play_type", SearchAndPlay(name=artist))
-
-    def play_album(self, album: str, artist: Optional[str]) -> None:
-        self.ipc.dispatch("play_type", SearchAndPlay(name=album, artist=artist))
-
-    def play_radio(self, station_name: str) -> None:
-        self.ipc.dispatch("play_type", SearchAndPlay(name=station_name))
-
-    def play_playlist(self, playlist_name: str) -> None:
-        self.ipc.dispatch("play_type", SearchAndPlay(name=playlist_name))
-
-    def play_track(self, track_name: str) -> None:
-        self.ipc.dispatch("play_type", SearchAndPlay(name=track_name))
-
-    def play_tag(self, tag_name: str) -> None:
-        self.ipc.dispatch("play_type", SearchAndPlay(name=tag_name))
-
-    def play_genre(self, genre_name: str) -> None:
-        self.ipc.dispatch("play_type", SearchAndPlay(name=genre_name))
+    def play_session(
+        self, zone_or_output_id: str, session_key: str, item_key: Optional[str]
+    ):
+        self.ipc.dispatch(
+            "play",
+            PlaySearch(
+                item_key=item_key,
+                session_key=session_key,
+                zone_or_output_id=zone_or_output_id,
+            ),
+        )
 
 
 def main():
