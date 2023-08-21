@@ -204,6 +204,7 @@ async def playback_control(roon: RoonCore, cmd: PlaybackControl) -> None:
 @app.register_rpc
 @ensure_roon
 async def play(roon: RoonCore, cmd: Union[PlayPath, PlaySearch]) -> None:
+    log.info("play %s", cmd)
     roon.play(cmd)
 
 

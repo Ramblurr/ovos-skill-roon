@@ -3,9 +3,9 @@ dist/
 *.qmlc
 settings.json
 flycheck_*.py
-locale/*/output_name.entity
-locale/*/zone_name.entity
-locale/*/zone_or_output.entity
+roon_skill/locale/*/output_name.entity
+roon_skill/locale/*/zone_name.entity
+roon_skill/locale/*/zone_or_output.entity
 ui/images
 .env
 .envrc
