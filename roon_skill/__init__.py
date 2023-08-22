@@ -216,6 +216,8 @@ class RoonSkill(OVOSCommonPlaybackSkill):
             self.roon_proxy.pair(auth_opts)
             pairing_started = True
         elif os.environ.get("ROON_HOST") and os.environ.get("ROON_TOKEN"):
+            # settings from env indicate a dev environment where we don't want to reload
+            self.reload_skill = False
             pairing_started = True
             self.log.info(
                 f"Starting roon pairing host={settings_host} and port={settings_port}"
