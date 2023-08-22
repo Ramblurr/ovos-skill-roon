@@ -1,3 +1,18 @@
+# Copyright (C) 2022, 2023 Casey Link
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import os
 from typing import List, Optional, TypeVar
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
@@ -55,3 +70,19 @@ def from_roon_uri(uri: str) -> RoonPlayData:
                 item_key=item_key,
             )
     raise Exception(f"Unknown type of uri: {uri}")
+
+
+def write_contents_if_changed(file_path: str, contents: str) -> bool:
+    if os.path.exists(file_path):
+        with open(file_path, "r", encoding="utf-8") as f:
+            existing_content = f.read()
+    else:
+        existing_content = None
+
+    new_content = "\n".join(contents)
+
+    if existing_content != new_content:
+        with open(file_path, "w+", encoding="utf-8") as f:
+            f.write(new_content)
+        return True
+    return False

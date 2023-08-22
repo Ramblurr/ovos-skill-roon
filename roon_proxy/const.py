@@ -72,17 +72,15 @@ class ItemType(Enum):
 
     @classmethod
     @property
-    def filterable(self):
-        return self.STATION, self.GENRE
-
-    @property
-    def is_filterable(self):
-        return self in self.filterable
-
-    @classmethod
-    @property
     def searchable(self):
-        return self.TRACK, self.ALBUM, self.ARTIST, self.PLAYLIST, self.TAG
+        return (
+            self.TRACK,
+            self.ALBUM,
+            self.ARTIST,
+            self.PLAYLIST,
+            self.TAG,
+            self.STATION,
+        )
 
     @property
     def is_searchable(self):
