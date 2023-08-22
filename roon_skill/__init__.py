@@ -1029,6 +1029,8 @@ class RoonSkill(OVOSCommonPlaybackSkill):
                 zone_or_output_id, play_data["session_key"], play_data["item_key"]
             )
 
+        self.show_player(zone_or_output_id)
+
     def handle_roon_state_change(self, msg: RoonStateChange):
         # self.log.debug("handle_roon_state_change %s", msg)
         updated_zones = msg.get("updated_zones")
