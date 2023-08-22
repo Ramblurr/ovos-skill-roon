@@ -1035,7 +1035,10 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         updated_outputs = msg.get("updated_outputs")
         new_zones_found = msg.get("new_zones_found")
         for z in updated_zones:
-            self.cache.zones[z["zone_id"]] = z
+            zone_id = z["zone_id"]
+            self.cache.zones[zone_id] = z
+            if self.watched_zone_id == zone_id:
+                self.update_watched_zone()
         for o in updated_outputs:
             self.cache.outputs[o["output_id"]] = o
 
@@ -1055,6 +1058,7 @@ class RoonSkill(OVOSCommonPlaybackSkill):
     def handle_idle(self, message: str) -> None:
         # pylint: disable=unused-argument
         if self.gui:
+            self.log.debug("screen handler msg %s", message)
             url = self.get_display_url()
             self.log.info("showing idle screen %s", url)
             if url:
