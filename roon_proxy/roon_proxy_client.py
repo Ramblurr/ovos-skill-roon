@@ -200,7 +200,7 @@ class RoonProxyClient:
 
     def now_playing_for(self, zone_id: str):
         r = self.ipc.dispatch("now_playing_for", NowPlayingCommand(zone_id=zone_id))
-        return r
+        return r.np
 
     def subscribe(self, address: str, callback: Callable) -> None:
         self.ipc.dispatch("subscribe", SubscribeCommand(address=address))

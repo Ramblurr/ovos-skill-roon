@@ -274,6 +274,7 @@ class RoonSkill(OVOSCommonPlaybackSkill):
                 self.handle_roon_state_change,
             )
             self.update_library_cache()
+            self.register_resting_screen()
 
     def update_pair_status(self):
         prev_status = self.pairing_status
@@ -797,6 +798,59 @@ class RoonSkill(OVOSCommonPlaybackSkill):
                 r,
             )
 
+    @intent_handler("ShuffleOn.intent")
+    def handle_shuffle_on(self, message):
+        """Turn shuffle on."""
+        zone_id = self.get_target_zone_or_output(message)
+        if zone_id:
+            self.roon_proxy.shuffle(zone_id, True)
+            self.acknowledge()
+
+    @intent_handler("ShuffleOff.intent")
+    def handle_shuffle_off(self, message):
+        """Turn shuffle off."""
+        zone_id = self.get_target_zone_or_output(message)
+        if zone_id:
+            self.roon_proxy.shuffle(zone_id, False)
+            self.acknowledge()
+
+    @intent_handler("RepeatTrackOn.intent")
+    def handle_repeat_one_on(self, message):
+        """Turn repeat one on."""
+        zone_id = self.get_target_zone_or_output(message)
+        if zone_id:
+            self.roon_proxy.repeat(zone_id, "loop_one")
+            self.acknowledge()
+
+    @intent_handler("RepeatOff.intent")
+    def handle_repeat_off(self, message):
+        """Turn repeat off."""
+        zone_id = self.get_target_zone_or_output(message)
+        if zone_id:
+            self.roon_proxy.repeat(zone_id, "disabled")
+            self.acknowledge()
+
+    @intent_handler("WhatIsPlaying.intent")
+    def handle_what_is_playing(self, message):
+        zone_id = self.get_target_zone_or_output(message)
+        if not zone_id:
+            return
+        now_playing = self.roon_proxy.now_playing_for(zone_id)
+        zone_name = self.zone_or_output_name(zone_id)
+        if not now_playing or now_playing == {}:
+            self.log.info("no now playing for %s", zone_id)
+            self.speak_dialog("ZoneNotPlaying", {"zone_name": zone_name})
+            return
+        self.log.info("what is playing in %s? %s", zone_name, now_playing)
+        line1 = now_playing.get("two_line").get("line1")
+        line2 = now_playing.get("two_line").get("line2")
+
+        if len(line1) > 0 and len(line2) > 0:
+            self.speak_dialog("WhatIsPlayingReply-2", {"line1": line1, "line2": line2})
+        elif len(line1) > 0:
+            self.speak_dialog("WhatIsPlayingReply", {"line1": line1})
+        self.show_player(zone_id)
+
     def regex_translate(self, regex: str) -> Pattern:
         """Translate the given regex."""
         if regex not in self.regexes:
@@ -987,6 +1041,40 @@ class RoonSkill(OVOSCommonPlaybackSkill):
 
         if new_zones_found:
             self.update_entities()
+
+    def get_display_url(self) -> Optional[str]:
+        if self.roon_not_connected():
+            return None
+        auth = self.get_auth()
+        if not auth:
+            return None
+        host = auth.get("host")
+        return "http://{}:{}/display/".format(host, 9330)
+
+    @resting_screen_handler("RoonNowPlaying")
+    def handle_idle(self, message: str) -> None:
+        # pylint: disable=unused-argument
+        if self.gui:
+            url = self.get_display_url()
+            if url:
+                self.gui.clear()
+                self.gui.show_url(url)
+
+    def clear_gui_info(self):
+        """Clear the gui variable list."""
+        if self.gui:
+            for k in STATUS_KEYS:
+                self.gui[k] = ""
+
+    def show_player(self, zone_id: str) -> None:
+        if not self.gui or not self.gui.connected:
+            return
+
+        self.gui.clear()
+        self.clear_gui_info()
+        self.set_watched_zone(zone_id)
+        if self.update_watched_zone():
+            self.gui.show_page("AudioPlayer.qml", override_idle=True)
 
     def set_watched_zone(self, zone_id: str) -> None:
         self.clear_watched_zone()

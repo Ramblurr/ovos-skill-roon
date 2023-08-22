@@ -232,13 +232,13 @@ async def search_generic(roon: RoonCore, cmd: SearchGeneric) -> SearchTypeResult
 
 @app.register_rpc
 @ensure_roon
-def get_image(roon: RoonCore, cmd: GetImageCommand) -> GetImageReply:
+async def get_image(roon: RoonCore, cmd: GetImageCommand) -> GetImageReply:
     return GetImageReply(url=roon.get_image(cmd.image_key))
 
 
 @app.register_rpc
 @ensure_roon
-def now_playing_for(roon: RoonCore, cmd: NowPlayingCommand) -> NowPlayingReply:
+async def now_playing_for(roon: RoonCore, cmd: NowPlayingCommand) -> NowPlayingReply:
     return NowPlayingReply(np=roon.now_playing_for(cmd.zone_id))
 
 
