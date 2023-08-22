@@ -127,4 +127,11 @@ class RoonApiBrowseLoadResponse:
     list: BrowseList
 
 
+class RoonStateChange(TypedDict):
+    event: RoonSubscriptionEvent
+    new_zones_found: bool
+    updated_zones: List[dict]
+    updated_outputs: List[dict]
+
+
 ServiceTransportResponse = Optional[Union[str, Dict[str, Any]]]

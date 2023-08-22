@@ -86,3 +86,14 @@ def write_contents_if_changed(file_path: str, contents: str) -> bool:
             f.write(new_content)
         return True
     return False
+
+
+def format_duration(seconds: int) -> str:
+    if seconds is None:
+        return ""
+    minutes = seconds // 60
+    hours = minutes // 60
+    if hours == 0:
+        return "%02d:%02d" % (minutes, seconds % 60)
+    else:
+        return "%02d:%02d:%02d" % (hours, minutes % 60, seconds % 60)
