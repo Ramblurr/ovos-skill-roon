@@ -1056,6 +1056,7 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         # pylint: disable=unused-argument
         if self.gui:
             url = self.get_display_url()
+            self.log.info("showing idle screen %s", url)
             if url:
                 self.gui.clear()
                 self.gui.show_url(url)
@@ -1074,7 +1075,7 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         self.clear_gui_info()
         self.set_watched_zone(zone_id)
         if self.update_watched_zone():
-            self.gui.show_page("AudioPlayer.qml", override_idle=True)
+            self.gui.show_page("AudioPlayer", override_idle=True)
 
     def set_watched_zone(self, zone_id: str) -> None:
         self.clear_watched_zone()
