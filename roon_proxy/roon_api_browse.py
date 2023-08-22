@@ -215,7 +215,6 @@ def match_and_enrich(
     items: List[BrowseItem],
 ) -> List[EnrichedBrowseItem]:
     """Match and enrich an item."""
-    assert item_type.is_filterable
     data, confidence = match_one_item(phrase, items)
     if data is None:
         return NOTHING_FOUND

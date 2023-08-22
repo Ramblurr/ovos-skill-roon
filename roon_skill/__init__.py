@@ -19,7 +19,7 @@ import hashlib
 import os
 import re
 from functools import wraps
-from typing import Any, Dict, List, Match, Optional, Pattern, TypedDict, Union, cast
+from typing import Dict, List, Match, Optional, Pattern, Union, cast
 
 from adapt.intent import IntentBuilder
 from lingua_franca.parse import extract_number
@@ -65,7 +65,7 @@ from .types import (
     RoonPlayData,
     RoonSkillSettings,
 )
-from .util import from_roon_uri, remove_nulls, to_roon_uri
+from .util import from_roon_uri, remove_nulls, to_roon_uri, write_contents_if_changed
 
 STATUS_KEYS = [
     "line1",
@@ -156,30 +156,18 @@ class RoonSkill(OVOSCommonPlaybackSkill):
     def connect_roon_proxy(self):
         self.proxy_connected = False
         try:
-            self.log.info("connect_roon_proxy")
+            self.log.info("attempting to connect to roon proxy")
             self.roon_proxy.connect()
             self.proxy_connected = True
-            self.log.info("connect_roon_proxy: connected")
+            self.log.info("connected to roon proxy")
             self.post_proxy_connect_init()
         except rpc.error.TimeoutException:
-            self.log.info("connect_roon_proxy: failed to connect")
+            self.log.info("failed to connect to roon proxy")
             self.schedule_event(self.connect_roon_proxy, 2, name="RoonProxyConnect")
 
     def post_proxy_connect_init(self):
-        self.cancel_scheduled_event("RoonSettingsUpdate")
         self.settings_change_callback = self.handle_settings_change
-        if not self.start_pairing():
-            # if we aren't authorized yet, then update our settings every 3 seconds
-            # this is so that if the user changes the settings in the webui (or config file)
-            # we can react timely
-            update_settings_interval = 3
-            self.schedule_repeating_event(
-                self.handle_settings_change,
-                # see https://github.com/OpenVoiceOS/OVOS-workshop/issues/128
-                None,  # type: ignore
-                update_settings_interval,
-                name="RoonSettingsUpdate",
-            )
+        self.start_pairing()
 
     def initialize(self):
         """Init skill."""
@@ -196,8 +184,8 @@ class RoonSkill(OVOSCommonPlaybackSkill):
 
     def shutdown(self):
         """Shutdown skill."""
-        self.cancel_scheduled_event("RoonSettingsUpdate")
         self.cancel_scheduled_event("RoonCoreCache")
+        self.cancel_scheduled_event("RoonPairing")
         self.roon_proxy.disconnect()
 
     def start_pairing(self) -> bool:
@@ -333,7 +321,6 @@ class RoonSkill(OVOSCommonPlaybackSkill):
             pass
         if not self.paired:
             # try to start pairing with new auth settings
-            self.cancel_scheduled_event("RoonSettingsUpdate")
             self.start_pairing()
 
     def update_library_cache(self):
@@ -342,30 +329,13 @@ class RoonSkill(OVOSCommonPlaybackSkill):
             self.cache = self.roon_proxy.update_cache()
             self.update_entities()
 
-    def old_write_entity_file(self, name, data):
-        with open(
-            os.path.join(self.root_dir, "locale", self.lang, f"{name}.entity"),
-            "w+",
-            encoding="utf-8",
-        ) as f:
-            f.write("\n".join(data))
-        self.register_entity_file(f"{name}.entity")
-
-    def _write_entity_file(self, name, data):
+    def _write_entity_file(self, name: str, data: List[str]) -> None:
         """Write the entity file to the appropriate location on disk
         Only writes the file if it has changed (to prevent init loops)"""
-        file_path = os.path.join(self.root_dir, "locale", self.lang, f"{name}.entity")
-        if os.path.exists(file_path):
-            with open(file_path, "r", encoding="utf-8") as f:
-                existing_content = f.read()
-        else:
-            existing_content = None
-
-        new_content = "\n".join(data)
-
-        if existing_content != new_content:
-            with open(file_path, "w+", encoding="utf-8") as f:
-                f.write(new_content)
+        file_name = f"{name}.entity"
+        file_path = os.path.join(self.root_dir, "locale", self.lang, file_name)
+        was_changed = write_contents_if_changed(file_path, "\n".join(data))
+        if was_changed:
             self.register_entity_file(f"{name}.entity")
 
     def update_entities(self):
@@ -812,25 +782,6 @@ class RoonSkill(OVOSCommonPlaybackSkill):
                 r,
             )
 
-    # @intent_handler("PlayAlbum.intent")
-    # def handle_album(self, message: Message):
-    #    """Handle the searching and playing of a album
-
-    #    :param message: List of registered utterances
-    #    :type message: dict
-    #    """
-    #    album = message.data.get("album")
-    #    zone_or_output = message.data.get("zone_or_output")
-    #    self.debug_message(message, "PlayAlbum")
-    #    zone_id = self.get_target_zone_or_output(message)
-    #    if message.data.get("artist"):
-    #        artist = message.data.get("artist")
-
-    #    self.roon_proxy.play_media(zone_id, album, artist)
-    #    data, confidence = self.roon.search_type(album, TYPE_ALBUM)
-    #    self.log.info(f"search result conf={confidence} data={data}")
-    #    self._play(data, message.data.get("utterances")[0])
-
     def regex_translate(self, regex: str) -> Pattern:
         """Translate the given regex."""
         if regex not in self.regexes:
@@ -843,9 +794,16 @@ class RoonSkill(OVOSCommonPlaybackSkill):
                 self.log.error(f"unknown regex {regex}")
         return self.regexes[regex]
 
+    def list_capture_groups(self, match: Match) -> List[str]:
+        """List the capture groups in a match."""
+        return [g for g in match.groups() if g]
+
     def regex_remove(self, phrase: str, regex_name: str) -> str:
         regex = self.regex_translate(regex_name)
         if regex:
+            self.log.debug(
+                "regex_remove %s: re='%s' phrase='%s'", regex_name, regex, phrase
+            )
             return re.sub(regex, "", phrase, re.IGNORECASE)
         self.log.error(f"unknown regex {regex_name}")
         return phrase
@@ -858,7 +816,6 @@ class RoonSkill(OVOSCommonPlaybackSkill):
 
     def regex_search(self, phrase: str, regex_name: str) -> Optional[Match]:
         regex = self.regex_translate(regex_name)
-        self.log.info("REGEX SEARCH %s %s %s", phrase, regex_name, regex)
         if regex:
             return re.search(regex, phrase)
         self.log.error(f"unknown regex {regex_name}")
@@ -867,9 +824,14 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         self.log.debug("_specific_query %s", phrase)
         for item_type in ItemType.searchable:
             type_name = item_type.name.lower()
-            if self.voc_match(phrase, type_name):
-                phrase = self.remove_voc(phrase, type_name)
-                self.log.info("%s phrase: %s", item_type.name, phrase)
+            match = self.regex_search(phrase, type_name)
+            if match:
+                phrase = " ".join(match.groupdict().values()).strip()
+                self.log.debug(
+                    "_specific_query matched phrase to type phrase='%s' item_type='%s'",
+                    phrase,
+                    item_type.name,
+                )
                 return self._query_type(item_type, phrase, zone_id)
             else:
                 self.log.debug("_specific_query nomatch %s", type_name)
@@ -877,7 +839,7 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         match = self.regex_match(phrase, "genre1")
         if not match:
             match = self.regex_match(phrase, "genre2")
-        self.log.info("genre match: %s", match)
+        self.log.debug("genre match: %s", match)
         if match:
             genre = match.groupdict()["genre"]
             return self._query_type(ItemType.GENRE, genre, zone_id)
