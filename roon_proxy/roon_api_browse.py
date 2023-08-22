@@ -75,7 +75,7 @@ def roon_browse_load(
 
 
 def roon_play_search_result(
-    roon, zone_or_output_id, item_key: str, session_key: str
+    roon, zone_or_output_id, item_key: Optional[str], session_key: str
 ) -> Union[RoonApiBrowseResponse, RoonApiErrorResponse]:
     # pylint disable=too-many-statements
     """Play the top result of a previous search."""

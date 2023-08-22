@@ -15,7 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import datetime
 import logging
-from typing import List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from roonapi import RoonApi
 
@@ -31,9 +31,14 @@ from .roon_api_browse import (
 )
 from .roon_cache import empty_roon_cache, roon_cache_update
 from .roon_types import (
+    EVENT_OUTPUT_CHANGED,
+    EVENT_ZONE_CHANGED,
+    EVENT_ZONE_SEEK_CHANGED,
     PlaybackControlOption,
     RepeatOption,
     RoonAuthSettings,
+    RoonStateChange,
+    RoonSubscriptionEvent,
     ServiceTransportResponse,
 )
 from .schema import PlayPath, PlaySearch, RoonCacheData, SearchTypeResult
@@ -48,6 +53,8 @@ class RoonCore:
         self.connected = True
         self.roon: RoonApi = api
         self.cache: RoonCacheData = empty_roon_cache()
+        self._state_callbacks: List[Callable] = []
+        self.roon.register_state_callback(self.handle_state_change)
 
     def disconnect(self) -> None:
         """Disconnect from Roon."""
@@ -108,17 +115,6 @@ class RoonCore:
         """
         return self.roon.repeat(zone_or_output_id, repeat)
 
-    def now_playing_for(self, zone_id: str):
-        zone = self.roon.zones.get(zone_id)
-        if zone is None:
-            return None
-        np = zone.get("now_playing")
-        np["seek_position"] = zone["seek_position"]
-        return np
-
-    def get_image(self, image_key: str) -> Optional[str]:
-        return self.roon.get_image(image_key)
-
     def playback_control(
         self, zone_or_output_id: str, control: PlaybackControlOption
     ) -> ServiceTransportResponse:
@@ -148,3 +144,59 @@ class RoonCore:
             self.roon, self.cache, session_key, query
         )
         return SearchTypeResult(results=results)
+
+    def register_state_callback(self, callback):
+        self._state_callbacks.append(callback)
+
+    def unregister_state_callback(self, callback):
+        self._state_callbacks.remove(callback)
+
+    def handle_state_change(
+        self, event: RoonSubscriptionEvent, zone_or_output_ids: List[str]
+    ):
+        # log.debug("event %s in %s", event, zone_or_output_ids)
+        should_update_entities = False
+        updated_zones = []
+        updated_outputs = []
+        if event in [EVENT_ZONE_CHANGED, EVENT_ZONE_SEEK_CHANGED]:
+            for zone_id in zone_or_output_ids:
+                if zone_id not in self.roon.zones:
+                    should_update_entities = True
+                updated_zones.append(self.update_zone(zone_id))
+        elif event in [EVENT_OUTPUT_CHANGED]:
+            for output_id in zone_or_output_ids:
+                if output_id not in self.roon.outputs:
+                    should_update_entities = True
+                updated_outputs.append(self.update_output(output_id))
+        for cb in self._state_callbacks:
+            cb(
+                RoonStateChange(
+                    event=event,
+                    updated_zones=updated_zones,
+                    updated_outputs=updated_outputs,
+                    new_zones_found=should_update_entities,
+                )
+            )
+
+    def update_zone(self, zone_id: str):
+        """Update a zone."""
+        self.cache.zones[zone_id] = self.roon.zones.get(zone_id)
+        return self.cache.zones[zone_id]
+
+    def update_output(self, output_id: str):
+        """Update a output."""
+        self.cache.outputs[output_id] = self.roon.outputs.get(output_id)
+        return self.cache.outputs[output_id]
+
+    def now_playing_for(self, zone_id: str) -> Dict[str, Any]:
+        zone = self.roon.zones.get(zone_id)
+        if zone is None:
+            return {}
+        np = zone.get("now_playing")
+        if np:
+            np["seek_position"] = zone.get("seek_position")
+            return np
+        return {}
+
+    def get_image(self, image_key: str) -> Optional[str]:
+        return self.roon.get_image(image_key)

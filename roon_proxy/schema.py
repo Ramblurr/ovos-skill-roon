@@ -102,7 +102,7 @@ class PlaybackControl(Payload):
 @register_message_type
 class PlaySearch(Payload):
     zone_or_output_id: str
-    item_key: str
+    item_key: Optional[str]
     session_key: str
 
 
@@ -129,3 +129,28 @@ class SearchGeneric(Payload):
 @register_message_type
 class SearchTypeResult(Payload):
     results: List[EnrichedBrowseItem]
+
+
+@register_message_type
+class SubscribeCommand(Payload):
+    address: str
+
+
+@register_message_type
+class NowPlayingCommand(Payload):
+    zone_id: str
+
+
+@register_message_type
+class NowPlayingReply(Payload):
+    np: Dict[str, Any]
+
+
+@register_message_type
+class GetImageCommand(Payload):
+    image_key: str
+
+
+@register_message_type
+class GetImageReply(Payload):
+    url: Optional[str]

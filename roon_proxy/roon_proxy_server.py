@@ -14,10 +14,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import asyncio
+import json
 import logging
 from functools import wraps
 from typing import Optional, Union
 
+import zmq
 from roonapi import RoonApi
 
 from rpc.server import Server
@@ -25,8 +27,13 @@ from rpc.server import Server
 from .const import DiscoverStatus, PairingStatus
 from .roon_core import RoonCore
 from .roon_discovery import Discovery, Pairing
+from .roon_types import RoonStateChange
 from .schema import (
+    GetImageCommand,
+    GetImageReply,
     MuteRequest,
+    NowPlayingCommand,
+    NowPlayingReply,
     PlaybackControl,
     PlayPath,
     PlaySearch,
@@ -40,6 +47,7 @@ from .schema import (
     SearchType,
     SearchTypeResult,
     Shuffle,
+    SubscribeCommand,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
 )
@@ -220,6 +228,35 @@ async def search_generic(roon: RoonCore, cmd: SearchGeneric) -> SearchTypeResult
     r = roon.search_generic(cmd.query, cmd.session_key)
     log.info("%s", r)
     return r
+
+
+@app.register_rpc
+@ensure_roon
+def get_image(roon: RoonCore, cmd: GetImageCommand) -> GetImageReply:
+    return GetImageReply(url=roon.get_image(cmd.image_key))
+
+
+@app.register_rpc
+@ensure_roon
+def now_playing_for(roon: RoonCore, cmd: NowPlayingCommand) -> NowPlayingReply:
+    return NowPlayingReply(np=roon.now_playing_for(cmd.zone_id))
+
+
+@app.register_rpc
+@ensure_roon
+async def subscribe(roon: RoonCore, cmd: SubscribeCommand) -> None:
+    ctx = zmq.Context()
+    publisher: Optional[zmq.Socket] = None
+
+    def roon_state_change(msg: RoonStateChange):
+        assert publisher
+        publisher.send_string(json.dumps(msg))
+
+    if not publisher:
+        publisher = ctx.socket(zmq.PUB)
+        log.info("Starting PubSub on %s", cmd.address)
+        publisher.bind(cmd.address)
+        roon.register_state_callback(roon_state_change)
 
 
 def main():

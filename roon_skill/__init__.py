@@ -15,8 +15,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # pylint: disable=invalid-name
 """Roon Skill."""
+import datetime
 import hashlib
 import os
+import random
 import re
 from functools import wraps
 from typing import Dict, List, Match, Optional, Pattern, Union, cast
@@ -50,11 +52,8 @@ from roon_proxy.roon_types import (
     EVENT_OUTPUT_CHANGED,
     EVENT_ZONE_CHANGED,
     EVENT_ZONE_SEEK_CHANGED,
-    RoonApiBrowseLoadResponse,
-    RoonApiBrowseResponse,
-    RoonApiErrorResponse,
     RoonAuthSettings,
-    RoonSubscriptionEvent,
+    RoonStateChange,
 )
 from roon_proxy.schema import RoonCacheData, RoonManualPairSettings
 from roon_proxy.util import match_one
@@ -65,7 +64,13 @@ from .types import (
     RoonPlayData,
     RoonSkillSettings,
 )
-from .util import from_roon_uri, remove_nulls, to_roon_uri, write_contents_if_changed
+from .util import (
+    format_duration,
+    from_roon_uri,
+    remove_nulls,
+    to_roon_uri,
+    write_contents_if_changed,
+)
 
 STATUS_KEYS = [
     "line1",
@@ -129,11 +134,13 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         self.proxy_connected = False
         self.waiting_for_authorization = False
         self.pairing_status: PairingStatus = PairingStatus.NOT_STARTED
-        self.roon_proxy = RoonProxyClient(
-            os.environ.get("ROON_PROXY_SOCK") or "ipc://server.sock"
-        )
         self.cache: RoonCacheData = empty_roon_cache()
         self.regexes: Dict[str, Pattern] = {}
+        self.watched_zone_id = None
+        self.watched_artist_image_keys = None
+        self.watched_artist_image_last_changed_at = None
+        self.watched_artist_image_current = None
+        self.watched_artist_image_change_after_seconds = None
         super().__init__(*args, **kwargs)
         self.supported_media = [
             MediaType.GENERIC,
@@ -172,6 +179,9 @@ class RoonSkill(OVOSCommonPlaybackSkill):
     def initialize(self):
         """Init skill."""
         super().initialize()
+        self.roon_proxy = RoonProxyClient(
+            self.log, os.environ.get("ROON_PROXY_SOCK") or "ipc://server.sock"
+        )
         self.log.info("roon init")
         # Setup handlers for playback control messages
         self.add_event("mycroft.audio.service.next", self.handle_next)
@@ -258,6 +268,11 @@ class RoonSkill(OVOSCommonPlaybackSkill):
                 name="RoonPairing",
             )
             self.schedule_cache_update()
+
+            self.roon_proxy.subscribe(
+                os.environ.get("ROON_PUBSUB_SOCK") or "ipc://pubsub.sock",
+                self.handle_roon_state_change,
+            )
             self.update_library_cache()
 
     def update_pair_status(self):
@@ -959,3 +974,104 @@ class RoonSkill(OVOSCommonPlaybackSkill):
             self.roon_proxy.play_session(
                 zone_or_output_id, play_data["session_key"], play_data["item_key"]
             )
+
+    def handle_roon_state_change(self, msg: RoonStateChange):
+        # self.log.debug("handle_roon_state_change %s", msg)
+        updated_zones = msg.get("updated_zones")
+        updated_outputs = msg.get("updated_outputs")
+        new_zones_found = msg.get("new_zones_found")
+        for z in updated_zones:
+            self.cache.zones[z["zone_id"]] = z
+        for o in updated_outputs:
+            self.cache.outputs[o["output_id"]] = o
+
+        if new_zones_found:
+            self.update_entities()
+
+    def set_watched_zone(self, zone_id: str) -> None:
+        self.clear_watched_zone()
+        self.watched_zone_id = zone_id
+
+    def clear_watched_zone(self) -> None:
+        self.watched_zone_id = None
+        self.watched_artist_image_keys = None
+        self.watched_artist_image_last_changed_at = None
+        self.watched_artist_image_current = None
+        self.watched_artist_image_change_after_seconds = None
+
+    def update_watched_zone(self) -> bool:
+        if not self.gui or not self.watched_zone_id:
+            return False
+        now_playing = self.roon_proxy.now_playing_for(self.watched_zone_id)
+        # self.log.info("showing player %s", now_playing)
+        if now_playing is None:
+            return False
+        self.gui["line1"] = now_playing["two_line"]["line1"]
+        self.gui["line2"] = now_playing["two_line"]["line2"]
+        current_pos_seconds = now_playing["seek_position"]
+        duration_seconds = now_playing.get("length")
+        if current_pos_seconds and duration_seconds:
+            self.gui["currentPosition"] = format_duration(current_pos_seconds)
+            self.gui["duration"] = format_duration(duration_seconds)
+            self.gui["progressValue"] = current_pos_seconds / duration_seconds
+            self.gui["hasProgress"] = True
+        else:
+            self.gui["hasProgress"] = False
+
+        album_cover_image_key = now_playing.get("image_key")
+        if album_cover_image_key:
+            self.gui["albumCoverUrl"] = self.roon_proxy.get_image(album_cover_image_key)
+            self.gui["hasAlbumCover"] = True
+        else:
+            self.gui["hasAlbumCover"] = False
+        if len(now_playing.get("artist_image_keys", [])) > 0:
+            artist_image_key = None
+            if (
+                self.watched_artist_image_keys is None
+                or self.watched_artist_image_keys
+                != set(now_playing["artist_image_keys"])
+            ):
+                self.watched_artist_image_keys = set(now_playing["artist_image_keys"])
+                artist_image_key = random.choice(list(self.watched_artist_image_keys))
+            elif (
+                self.watched_artist_image_keys
+                and self.watched_artist_image_last_changed_at
+            ):
+                delta = (
+                    datetime.datetime.now() - self.watched_artist_image_last_changed_at
+                )
+                if self.watched_artist_image_change_after_seconds is not None and (
+                    delta.total_seconds()
+                    > self.watched_artist_image_change_after_seconds
+                ):
+                    if (
+                        self.watched_artist_image_current
+                        in self.watched_artist_image_keys
+                        and len(self.watched_artist_image_keys) > 1
+                    ):
+                        copy = self.watched_artist_image_keys.copy()
+                        copy.remove(self.watched_artist_image_current)
+                        artist_image_key = random.choice(list(copy))
+
+            if artist_image_key:
+                self.gui["hasArtistImage"] = True
+                self.gui["hasArtistBlurredImage"] = True
+                self.gui["artistImageUrl"] = self.roon_proxy.get_image(artist_image_key)
+                self.gui["artistBlurredImageUrl"] = self.roon_proxy.get_image(
+                    artist_image_key
+                )
+                self.gui["artistBlurredImageDim"] = False
+                self.watched_artist_image_current = artist_image_key
+                self.watched_artist_image_last_changed_at = datetime.datetime.now()
+                self.watched_artist_image_change_after_seconds = random.randint(60, 120)
+        else:
+            self.gui["hasArtistImage"] = False
+            if album_cover_image_key:
+                self.gui["artistBlurredImageUrl"] = self.roon_proxy.get_image(
+                    album_cover_image_key
+                )
+                self.gui["hasArtistBlurredImage"] = True
+                self.gui["artistBlurredImageDim"] = True
+            else:
+                self.gui["hasArtistBlurredImage"] = False
+        return True
