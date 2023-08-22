@@ -16,7 +16,7 @@
 import json
 import logging
 import threading
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional
 
 import zmq
 
@@ -48,7 +48,8 @@ log = logging.getLogger(__name__)
 
 
 class RoonPubSub:
-    def __init__(self, log, address: str, cb: Callable):
+    def __init__(self, log, ipc, address: str, cb: Callable):
+        self.ipc = ipc
         self.address = address
         self.log = log
         self.cb = cb
@@ -72,7 +73,7 @@ class RoonPubSub:
             return
         retries_left = 5
         while retries_left > 0 and not self.stopped:
-            if self.socket.poll(timeout=5000):
+            if self.socket.poll(timeout=3000):
                 break
             retries_left -= 1
             self.log.debug(
@@ -84,6 +85,7 @@ class RoonPubSub:
             self.log.debug(
                 f"RoonPubSubresponse from server timed out. retries exhausted. giving up"
             )
+            self.ipc.dispatch("subscribe", SubscribeCommand(address=self.address))
             return
         else:
             if retries_left != 5:
@@ -205,7 +207,7 @@ class RoonProxyClient:
     def subscribe(self, address: str, callback: Callable) -> None:
         self.ipc.dispatch("subscribe", SubscribeCommand(address=address))
         if not self.pubsub:
-            self.pubsub = RoonPubSub(self.log, address, callback)
+            self.pubsub = RoonPubSub(self.log, self.ipc, address, callback)
         else:
             if callback != self.pubsub.cb:
                 self.unsubscribe()
