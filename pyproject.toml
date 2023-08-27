@@ -46,10 +46,11 @@ line-length = 88
 profile = "black"
 
 [tool.poetry.plugins."ovos.plugin.skill"]
-"skill-roon.ramblurr" = "skill_roon:RoonSkill"
+"skill-roon.ramblurr" = "roon_skill:RoonSkill"
 
 [tool.poetry.scripts]
-"roon-skill" = "skill_roon:RoonSkill"
+"roon-skill" = "roon_skill.launcher:main"
+#"roon-skill" = "skill_roon:RoonSkill"
 "roon-proxy-server" = "roon_proxy.roon_proxy_server:main"
 
 

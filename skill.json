@@ -1,6 +1,6 @@
 {
   "name": "Roon Skill",
-  "skillname": "skill-roon.ramblurr",
+  "skillname": "skill_roon",
   "authorname": "Casey Link",
   "foldername": "",
   "url": "https://github.com/ramblurr/ovos-skill-roon",

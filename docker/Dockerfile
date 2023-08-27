@@ -13,8 +13,8 @@ LABEL org.opencontainers.image.source="https://github.com/ramblurr/ovos-roon-ski
 LABEL org.opencontainers.image.vendor="Ramblurr"
 
 USER root
-RUN apk add --no-cache supervisor
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+RUN apk add --no-cache supervisor vim
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 USER ovos
 
 
@@ -22,7 +22,7 @@ RUN set -ex; \
     pip3 install git+https://github.com/ramblurr/ovos-skill-roon.git@${VERSION}; \
     rm -rf ${HOME}/.cache
 
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint.sh /entrypoint.sh
 
 ENV ROON_PROXY_SOCK ipc://tmp/roon_proxy.sock
 ENV ROON_PUBSUB_SOCK ipc://tmp/roon_pubsub.sock
