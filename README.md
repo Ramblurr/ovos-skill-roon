@@ -1,6 +1,6 @@
 [![AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--v3--or--later-blue)](./LICENSE)
 [![contributions welcome](https://img.shields.io/badge/contributions-welcome-pink.svg?style=flat)](https://github.com/ramblurr/ovos-skill-roon/pulls)
-[![Skill: MIT](https://img.shields.io/badge/mycroft.ai-skill-blue)](https://mycroft.ai)
+[![Skill: AGPLv3+](https://img.shields.io/badge/OVOS-skill-red)](https://openvoiceos.github.io/community-docs/)
 
 # <img src="https://raw.githack.com/FortAwesome/Font-Awesome/master/svgs/solid/music.svg" card_color="#3E34FA" width="50" height="50" style="vertical-align:bottom"/> Roon Skill <sup><a href="#disclaimer">unofficial</a></sup> for ~~Mycroft~~ [OVOS](https://openvoiceos.github.io/community-docs/)
 
@@ -47,7 +47,7 @@ This skill must be installed as a container. See [docker/docker-compose.yml](./d
 
 ## Setup
 
-⚠️ Your Roon Core must be on the same network as your Mycroft device. If your Mycroft device and Roon Core are on different vlans, you will need to configure the host and port manually. ⚠️
+⚠️ Your Roon Core must be on the same network as your OVOS device. If your OVOS device and Roon Core are on different vlans, you will need to configure the host and port manually. ⚠️
 
 ### Discovery
 
