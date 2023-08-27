@@ -1,0 +1,32 @@
+---
+version: "3.9"
+x-podman: &podman
+  userns_mode: keep-id
+  security_opt:
+    - "label=disable"
+x-logging: &default-logging
+  driver: json-file
+  options:
+    mode: non-blocking
+    max-buffer-size: 4m
+    max-size: "200m"
+    max-file: "1"
+services:
+  ovos_skill_roon:
+    <<: *podman
+    container_name: ovos_skill_roon
+    hostname: ovos_skill_roon
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/ramblurr/ovos-skill-roon:${VERSION}
+    pull_policy: always
+    network_mode: host
+    volumes:
+      - ${CONFIG_FOLDER}:/home/${OVOS_USER}/.config/mycroft
+      - ${TMP_FOLDER}:/tmp/mycroft
+      - ~/src/mycroft/roon-skill:/skill_roon
+    logging: *default-logging
+    environment:
+      TZ: $TZ
