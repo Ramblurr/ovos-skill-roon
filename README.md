@@ -43,12 +43,7 @@ Tested with Roon Core 2.0.
 
 ## Installation
 
-Make sure to be within the Mycroft `virtualenv` before running the `msm` command.
-
-```shell
-source mycroft-core/venv-activate.sh
-msm install https://github.com/ramblurr/ovos-skill-roon.git
-```
+This skill must be installed as a container. See [docker/docker-compose.yml](./docker/docker-compose.yml). You can just copy the `ovos_skill_roon` service block into your existing compose.
 
 ## Setup
 
@@ -107,7 +102,7 @@ This skill is licensed under the GNU AGPL v3.0 or later.
 
 ```
 roon-skill
-Copyright (C) 2022 Casey Link
+Copyright (C) 2022-2023 Casey Link
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
