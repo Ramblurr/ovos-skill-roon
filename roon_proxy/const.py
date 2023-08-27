@@ -30,7 +30,7 @@ ROON_APPINFO = {
     "display_version": "0.0.1",
     "publisher": "Casey Link",
     "email": "ramblurr@users.noreply.github.com",
-    "website": "https://github.com/ramblurr/mycroft-roon-skill",
+    "website": "https://github.com/ramblurr/ovos-skill-roon",
 }
 
 ROON_KEYWORDS = ["roon", "ruin", "rune"]

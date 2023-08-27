@@ -1,5 +1,5 @@
 [![AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--v3--or--later-blue)](./LICENSE)
-[![contributions welcome](https://img.shields.io/badge/contributions-welcome-pink.svg?style=flat)](https://github.com/Ramblurr/mycroft-roon-skill/pulls)
+[![contributions welcome](https://img.shields.io/badge/contributions-welcome-pink.svg?style=flat)](https://github.com/ramblurr/ovos-skill-roon/pulls)
 [![Skill: MIT](https://img.shields.io/badge/mycroft.ai-skill-blue)](https://mycroft.ai)
 
 # <img src="https://raw.githack.com/FortAwesome/Font-Awesome/master/svgs/solid/music.svg" card_color="#3E34FA" width="50" height="50" style="vertical-align:bottom"/> Roon Skill <sup><a href="#disclaimer">unofficial></a></sup> for Mycroft
@@ -47,7 +47,7 @@ Make sure to be within the Mycroft `virtualenv` before running the `msm` command
 
 ```shell
 source mycroft-core/venv-activate.sh
-msm install https://github.com/Ramblurr/mycroft-roon-skill.git
+msm install https://github.com/ramblurr/ovos-skill-roon.git
 ```
 
 ## Setup
