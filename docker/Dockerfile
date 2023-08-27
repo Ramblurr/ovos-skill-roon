@@ -24,6 +24,7 @@ RUN set -ex; \
 
 COPY entrypoint.sh /entrypoint.sh
 
-ENV ROON_PROXY_SOCK ipc:////skill_roon/roon_proxy.sock
+ENV ROON_PROXY_SOCK ipc://tmp/roon_proxy.sock
+ENV ROON_PUBSUB_SOCK ipc://tmp/roon_pubsub.sock
 
 ENTRYPOINT ["/entrypoint.sh"]
