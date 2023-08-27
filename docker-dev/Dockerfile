@@ -32,7 +32,7 @@ VOLUME /roon-skill
 
 COPY entrypoint.sh /entrypoint.sh
 
-ENV ROON_PROXY_SOCK ipc:////mycroft_roon_skill/roon_proxy.sock
+ENV ROON_PROXY_SOCK ipc:////skill_roon/roon_proxy.sock
 
-#ENTRYPOINT ["ovos-skill-launcher", "mycroft-roon-skill.ramblurr"]
+#ENTRYPOINT ["ovos-skill-launcher", "skill-roon.ramblurr"]
 ENTRYPOINT ["/entrypoint.sh"]

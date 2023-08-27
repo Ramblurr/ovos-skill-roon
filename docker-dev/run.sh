@@ -8,7 +8,7 @@ SKILL_FOLDER=~/src/mycroft/roon-skill
 
 
 podman run --userns=keep-id \
-    -v ${SKILL_FOLDER}:/mycroft_roon_skill:Z \
+    -v ${SKILL_FOLDER}:/skill_roon:Z \
     -v ${CONFIG_FOLDER}:/home/${OVOS_USER}/.config/mycroft:Z \
     -v ${TMP_FOLDER}:/tmp/mycroft:Z \
     -it \
