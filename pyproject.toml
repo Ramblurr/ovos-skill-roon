@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "mycroft-roon-skill"
+name = "skill-roon"
 version = "0.0.1"
 description = "mycroft/ovos roon skill plugin"
 authors = ["Ramblurr <unnamedrambler@gmail.com>"]
@@ -46,10 +46,10 @@ line-length = 88
 profile = "black"
 
 [tool.poetry.plugins."ovos.plugin.skill"]
-"mycroft-roon-skill.ramblurr" = "mycroft-roon-skill:RoonSkill"
+"skill-roon.ramblurr" = "skill-roon:RoonSkill"
 
 [tool.poetry.scripts]
-roon-skill = "mycroft_roon_skill:RoonSkill"
+roon-skill = "skill_roon:RoonSkill"
 roon-proxy-server = "roon_proxy.roon_proxy_server:main"
 
 
