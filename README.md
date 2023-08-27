@@ -2,7 +2,7 @@
 [![contributions welcome](https://img.shields.io/badge/contributions-welcome-pink.svg?style=flat)](https://github.com/ramblurr/ovos-skill-roon/pulls)
 [![Skill: MIT](https://img.shields.io/badge/mycroft.ai-skill-blue)](https://mycroft.ai)
 
-# <img src="https://raw.githack.com/FortAwesome/Font-Awesome/master/svgs/solid/music.svg" card_color="#3E34FA" width="50" height="50" style="vertical-align:bottom"/> Roon Skill <sup><a href="#disclaimer">unofficial></a></sup> for Mycroft
+# <img src="https://raw.githack.com/FortAwesome/Font-Awesome/master/svgs/solid/music.svg" card_color="#3E34FA" width="50" height="50" style="vertical-align:bottom"/> Roon Skill <sup><a href="#disclaimer">unofficial</a></sup> for ~~Mycroft~~ [OVOS](https://openvoiceos.github.io/community-docs/)
 
 Control your [Roon Core][roon] with your voice.
 
@@ -19,7 +19,7 @@ Tested with Roon Core 2.0.
 
 ### Disclaimer
 
-*This skill is not officially commissioned/supported by Roon or Mycroft AI. The trademark "ROON" is registered by "Roon Labs LLC". The trademark "Mycroft" is registered by "Mycroft AI Inc"*  This skill is purely a community endeavor.
+*This skill is not officially commissioned/supported by Roon or OVOS. The trademark "ROON" is registered by "Roon Labs LLC".* This skill is purely a community endeavor.
 
 ## Examples
 
