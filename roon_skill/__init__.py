@@ -179,9 +179,13 @@ class RoonSkill(OVOSCommonPlaybackSkill):
     def initialize(self):
         """Init skill."""
         super().initialize()
-        self.roon_proxy = RoonProxyClient(
-            self.log, os.environ.get("ROON_PROXY_SOCK") or "ipc://server.sock"
+        settings = self.get_settings()
+        proxy_addr = (
+            settings.get("proxy_addr")
+            or os.environ.get("ROON_PROXY_SOCK")
+            or "ipc://server.sock"
         )
+        self.roon_proxy = RoonProxyClient(self.log, proxy_addr)
         self.log.info("roon init")
         # Setup handlers for playback control messages
         self.add_event("mycroft.audio.service.next", self.handle_next)
