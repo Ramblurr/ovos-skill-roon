@@ -13,6 +13,7 @@ class RoonSkillSettings(TypedDict):
     port: Optional[int]
     default_zone_id: Optional[str]
     default_zone_name: Optional[str]
+    proxy_addr: Optional[str]
 
 
 class RoonNotAuthorizedError(Exception):
