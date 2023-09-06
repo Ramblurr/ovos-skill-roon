@@ -39,7 +39,6 @@ from .schema import (
     SearchGeneric,
     SearchType,
     Shuffle,
-    SubscribeCommand,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
 )
@@ -85,7 +84,7 @@ class RoonPubSub:
             self.log.debug(
                 f"RoonPubSubresponse from server timed out. retries exhausted. giving up"
             )
-            self.ipc.dispatch("subscribe", SubscribeCommand(address=self.address))
+            self.ipc.dispatch("subscribe")
             return
         else:
             if retries_left != 5:
@@ -205,7 +204,7 @@ class RoonProxyClient:
         return r.np
 
     def subscribe(self, address: str, callback: Callable) -> None:
-        self.ipc.dispatch("subscribe", SubscribeCommand(address=address))
+        self.ipc.dispatch("subscribe")
         if not self.pubsub:
             self.pubsub = RoonPubSub(self.log, self.ipc, address, callback)
         else:

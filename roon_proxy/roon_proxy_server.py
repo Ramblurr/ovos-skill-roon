@@ -13,6 +13,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import os
 import asyncio
 import json
 import logging
@@ -47,7 +48,6 @@ from .schema import (
     SearchType,
     SearchTypeResult,
     Shuffle,
-    SubscribeCommand,
     VolumeAbsoluteChange,
     VolumeRelativeChange,
 )
@@ -242,11 +242,15 @@ async def now_playing_for(roon: RoonCore, cmd: NowPlayingCommand) -> NowPlayingR
     return NowPlayingReply(np=roon.now_playing_for(cmd.zone_id))
 
 
+ctx = zmq.Context()
+publisher: Optional[zmq.Socket] = None
+
+
 @app.register_rpc
 @ensure_roon
-async def subscribe(roon: RoonCore, cmd: SubscribeCommand) -> None:
-    ctx = zmq.Context()
-    publisher: Optional[zmq.Socket] = None
+async def subscribe(roon: RoonCore) -> None:
+    sock_addr = os.environ["ROON_PUBSUB_SOCK"]
+    global publisher
 
     def roon_state_change(msg: RoonStateChange):
         assert publisher
@@ -254,14 +258,12 @@ async def subscribe(roon: RoonCore, cmd: SubscribeCommand) -> None:
 
     if not publisher:
         publisher = ctx.socket(zmq.PUB)
-        log.info("Starting PubSub on %s", cmd.address)
-        publisher.bind(cmd.address)
+        log.info("Starting PubSub on %s", sock_addr)
+        publisher.bind(sock_addr)
         roon.register_state_callback(roon_state_change)
 
 
 def main():
-    import os
-
     sock_addr = os.environ["ROON_PROXY_SOCK"]
     log.info(f"Starting roon proxy server at {sock_addr}")
     asyncio.run(app.run(sock_addr))

@@ -132,11 +132,6 @@ class SearchTypeResult(Payload):
 
 
 @register_message_type
-class SubscribeCommand(Payload):
-    address: str
-
-
-@register_message_type
 class NowPlayingCommand(Payload):
     zone_id: str
 
