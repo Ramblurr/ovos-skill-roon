@@ -17,6 +17,7 @@ import logging
 from typing import Any, Dict, Optional, TypeVar
 
 import zmq
+from zmq.error import ZMQError
 
 from .util import current_time_us, unique_id, ErrorHandlerFn
 from .error import TimeoutException
@@ -84,11 +85,17 @@ class Client:
         def _poll_data(data: Any) -> None:
             """Implements lazy-pirate poll (see zmq guide chapter 4)"""
             assert self.socket
-            self.socket.send(data)
+            failed_initial_send = False
+            try:
+                self.socket.send(data)
+            except ZMQError:
+                logging.debug("failed initial send, socket in bad state")
+                failed_initial_send = True
             retries_left = _retries
             while retries_left > 0:
-                if self.socket.poll(_timeout):
-                    break
+                if not failed_initial_send:
+                    if self.socket.poll(_timeout):
+                        break
                 retries_left -= 1
                 logging.info(
                     f"response from server timed out retries_left={retries_left}"
@@ -96,6 +103,7 @@ class Client:
                 self.close()
                 self._ensure_connected()
                 self.socket.send(data)
+                failed_initial_send = False
 
             if retries_left == 0:
                 self.close()
