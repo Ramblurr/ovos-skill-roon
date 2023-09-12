@@ -529,31 +529,31 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         else:
             self.speak_dialog("RoonNotConfigured")
 
-    @intent_handler(
-        IntentBuilder("GetDefaultZone")
-        .optionally("Roon")
-        .require("List")
-        .require("Default")
-        .require("Zone")
-    )
+    @intent_handler("GetDefaultZone.intent")
     @ensure_paired
     def handle_get_default_zone(self, message: Message):
         # pylint: disable=unused-argument
         """Handle get default zone command."""
-        zone_id = self.get_default_zone_id()
-        if zone_id:
-            zone = self.cache.zones[zone_id]
-            self.speak_dialog("DefaultZone", zone)
-        else:
+        zone_or_output_id = self.get_default_zone_id()
+        if not zone_or_output_id:
             self.speak_dialog("NoDefaultZone")
+            return
+        zone = self.cache.zones.get(zone_or_output_id)
+        if zone:
+            self.speak_dialog("DefaultZone", zone)
+            return
+        output = self.cache.outputs.get(zone_or_output_id)
+        if output:
+            self.speak_dialog("DefaultZone", output)
+            return
+        default_zone_name = self.get_default_zone_name()
+        self.speak_dialog("DefaultZoneNotFound", default_zone_name)
 
     def converse(self, message: Optional[str] = None) -> bool:
         # pylint: disable=unused-argument
         return False
 
-    @intent_handler(
-        IntentBuilder("ListZones").optionally("Roon").require("List").require("Zone")
-    )
+    @intent_handler("GetZones.intent")
     @ensure_paired
     def list_zones(self, message: Message):
         # pylint: disable=unused-argument
@@ -562,58 +562,28 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         if self.roon_not_connected():
             return
         zones = self.cache.zones
-        if len(zones) == 0:
+        outputs = self.cache.outputs
+        if len(zones) == 0 and len(outputs) == 0:
             self.speak_dialog("NoZonesAvailable")
             return
-        zone_names = [o["display_name"] for id, o in zones.items()]
-        zone_names.sort()
-        if len(zones) == 1:
-            self.speak(zone_names[0])
+        zone_names = [o["display_name"] for o in zones.values()]
+        output_names = [o["display_name"] for o in outputs.values()]
+        zone_and_output_names = zone_names + output_names
+        zone_and_output_names.sort()
+
+        if len(zone_and_output_names) == 1:
+            self.speak(zone_and_output_names[0])
         else:
             if self.gui:
-                self.gui.show_text(", ".join(zone_names))
+                self.gui.show_text(", ".join(zone_and_output_names))
             self.speak_dialog(
                 "AvailableZones",
                 {
-                    "zones": " ".join(zone_names[:-1])
+                    "zones": " ".join(zone_and_output_names[:-1])
                     + " "
                     + self.translate("And")
                     + " "
-                    + zone_names[-1]
-                },
-            )
-
-    @intent_handler(
-        IntentBuilder("ListOutputs")
-        .optionally("Roon")
-        .require("List")
-        .require("Device")
-    )
-    @ensure_paired
-    def list_outputs(self, message: Message):
-        # pylint: disable=unused-argument
-        """List available devices."""
-        if self.roon_not_connected():
-            return
-        outputs = self.cache.outputs
-        if len(outputs) == 0:
-            self.speak_dialog("NoOutputsAvailable")
-            return
-        output_names = [o["display_name"] for id, o in outputs.items()]
-        output_names.sort()
-        if len(outputs) == 1:
-            self.speak(output_names[0])
-        else:
-            if self.gui:
-                self.gui.show_text(", ".join(output_names))
-            self.speak_dialog(
-                "AvailableOutputs",
-                {
-                    "outputs": " ".join(output_names[:-1])
-                    + " "
-                    + self.translate("And")
-                    + " "
-                    + output_names[-1]
+                    + zone_and_output_names[-1]
                 },
             )
 
