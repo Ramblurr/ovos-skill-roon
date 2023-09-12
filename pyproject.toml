@@ -57,3 +57,10 @@ profile = "black"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pyright]
+include = ["roon_skill", "roon_proxy", "rpc"]
+exclude = ["archive/**",
+    "**/__pycache__"
+]
+venv = ".venv"

@@ -13,3 +13,4 @@ ui/images
 *.egg-info
 /*.log
 /*.sock
+archive/
