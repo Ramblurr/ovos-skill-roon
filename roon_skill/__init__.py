@@ -630,18 +630,27 @@ class RoonSkill(OVOSCommonPlaybackSkill):
         if not zone_name:
             self.log.info("Failed to get SetZone from message")
             return
-        zone, conf = match_one(
-            zone_name, list(self.cache.zones.values()), "display_name"
+
+        zone_or_output, conf = match_one(
+            zone_name,
+            list(self.cache.outputs.values()) + list(self.cache.zones.values()),
+            "display_name",
         )
-        if not zone:
+        if not zone_or_output:
             self.log.info(f"failed to match a zone for {zone_name}")
             return
-        self.log.info("zone %s conf %s", zone, conf)
-        self.set_default_zone_id(zone["zone_id"])
-        self.set_default_zone_name(zone["display_name"])
-        self.speak_dialog("DefaultZoneConfirm", zone)
+        self.log.info("zone %s conf %s", zone_or_output, conf)
+        zone_or_output_id = zone_or_output.get("zone_id", None)
+        if zone_or_output_id is None:
+            zone_or_output_id = zone_or_output.get("output_id", None)
+        if not zone_or_output_id:
+            self.log.info(f"failed to match a zone for {zone_name}")
+            return
+        self.set_default_zone_id(zone_or_output_id)
+        self.set_default_zone_name(zone_or_output["display_name"])
+        self.speak_dialog("DefaultZoneConfirm", zone_or_output)
         if self.gui:
-            self.gui.show_text(zone["display_name"], title="Default Zone")
+            self.gui.show_text(zone_or_output["display_name"], title="Default Zone")
             self.release_gui_after()
 
     def release_gui_after(self, seconds=10):
